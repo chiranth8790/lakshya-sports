@@ -1,116 +1,265 @@
-import { IndianRupee, ShoppingCart, Package, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { IndianRupee, Package, AlertTriangle, Layers, ArrowRight, ShieldAlert, ShoppingCart, RefreshCw } from 'lucide-react';
+import { supabase } from '../../library/supabase';
+
+interface Product {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  price: number;
+  stock: number;
+  image?: string;
+  images?: string[];
+  colors?: Array<{ name: string; image?: string; sizes?: Array<{ size: string; stock: number }> }>;
+  variants?: Array<{ name: string; stock: number }>;
+}
 
 export default function AdminDashboard() {
-  // Static mock data for MVP setup
-  const kpis = [
-    { label: 'Total Revenue', value: '₹2,45,000', icon: IndianRupee, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Total Orders', value: '128', icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Total Products', value: '86', icon: Package, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Total Customers', value: '342', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
-  ];
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const recentOrders = [
-    { id: '#1024', name: 'Rahul', product: 'Yonex Astrox 100ZZ', amount: '₹15,999', status: 'PAID', statusColor: 'bg-green-100 text-green-800' },
-    { id: '#1023', name: 'Arjun', product: 'Yonex Shoe', amount: '₹4,999', status: 'SHIPPED', statusColor: 'bg-blue-100 text-blue-800' },
-    { id: '#1022', name: 'Kiran', product: 'Badminton Kit', amount: '₹8,499', status: 'PENDING', statusColor: 'bg-amber-100 text-amber-800' },
-  ];
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*');
+
+      if (!error && data) {
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper to compute accurate total stock for any product
+  const getProductTotalStock = (product: Product): number => {
+    if (Array.isArray(product.colors) && product.colors.length > 0) {
+      let sum = 0;
+      let hasColorStock = false;
+      for (const col of product.colors) {
+        if (Array.isArray(col.sizes) && col.sizes.length > 0) {
+          hasColorStock = true;
+          for (const sz of col.sizes) {
+            sum += Number(sz.stock || 0);
+          }
+        }
+      }
+      if (hasColorStock) return sum;
+    }
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+      let sum = 0;
+      for (const v of product.variants) {
+        sum += Number(v.stock || 0);
+      }
+      return sum;
+    }
+    return Number(product.stock || 0);
+  };
+
+  const totalProducts = products.length;
+
+  const lowStockProducts = products.filter((p) => getProductTotalStock(p) <= 5);
+
+  const totalInventoryValue = products.reduce((acc, p) => {
+    return acc + Number(p.price || 0) * getProductTotalStock(p);
+  }, 0);
+
+  const uniqueCategories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
+
+  // Category distribution
+  const categoryCounts: Record<string, number> = {};
+  products.forEach((p) => {
+    const cat = p.category || 'Uncategorized';
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-3 text-gray-500 font-bold text-sm uppercase">
+          <RefreshCw className="w-5 h-5 animate-spin" /> Loading Dashboard Data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-gray-900 uppercase">Dashboard</h1>
-        <select className="bg-white border border-gray-200 text-xs font-bold uppercase rounded-lg px-3 py-2 outline-none">
-          <option>Last 7 Days</option>
-          <option>Last 30 Days</option>
-          <option>Last 3 Months</option>
-          <option>Last 1 Year</option>
-        </select>
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 uppercase tracking-wider">Dashboard</h1>
+          <p className="text-xs text-gray-500 font-medium">Real-time product inventory and catalog overview.</p>
+        </div>
+        <button
+          onClick={fetchDashboardData}
+          className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 hover:border-black rounded-lg text-xs font-bold uppercase tracking-wider transition text-gray-700 hover:text-black shadow-xs"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh Data
+        </button>
       </div>
 
-      {/* KPI CARDS */}
+      {/* RAZORPAY API PENDING NOTICE */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="text-xs">
+          <p className="font-bold text-amber-900 uppercase tracking-wide">Razorpay Payment Integration Pending</p>
+          <p className="text-amber-700 mt-0.5 font-medium">
+            Live order transactions and revenue statistics will automatically connect here once your Razorpay API keys are configured. Catalog stock and inventory numbers below are live from Supabase.
+          </p>
+        </div>
+      </div>
+
+      {/* LIVE KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, idx) => (
-          <div key={idx} className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-xs">
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">{kpi.label}</p>
-              <p className="text-2xl font-black text-gray-900">{kpi.value}</p>
-            </div>
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${kpi.bg}`}>
-              <kpi.icon className={`w-6 h-6 ${kpi.color}`} />
-            </div>
+        {/* Total Products */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Total Products</p>
+            <p className="text-2xl font-black text-gray-900">{totalProducts}</p>
+            <p className="text-[10px] text-emerald-600 font-bold uppercase mt-1">Live from Database</p>
           </div>
-        ))}
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-purple-50">
+            <Package className="w-6 h-6 text-purple-600" />
+          </div>
+        </div>
+
+        {/* Low Stock Items */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Low Stock Alerts</p>
+            <p className="text-2xl font-black text-red-600">{lowStockProducts.length}</p>
+            <p className="text-[10px] text-red-500 font-bold uppercase mt-1">
+              {lowStockProducts.length > 0 ? 'Action Required' : 'All Items Stocked'}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-red-50">
+            <AlertTriangle className="w-6 h-6 text-red-600" />
+          </div>
+        </div>
+
+        {/* Inventory Value */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Inventory Valuation</p>
+            <p className="text-2xl font-black text-gray-900">₹{totalInventoryValue.toLocaleString('en-IN')}</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Total Stock Asset Value</p>
+          </div>
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-emerald-50">
+            <IndianRupee className="w-6 h-6 text-emerald-600" />
+          </div>
+        </div>
+
+        {/* Active Categories */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Active Categories</p>
+            <p className="text-2xl font-black text-gray-900">{uniqueCategories.length}</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Across Catalog</p>
+          </div>
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-50">
+            <Layers className="w-6 h-6 text-blue-600" />
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-        {/* REVENUE OVERVIEW (Placeholder Graph) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        {/* LIVE CATEGORY DISTRIBUTION */}
         <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
-          <h2 className="text-sm font-black uppercase text-gray-900 mb-6">Revenue Overview</h2>
-          <div className="h-64 flex items-end justify-between gap-2">
-            {[40, 70, 45, 90, 65, 100, 80].map((height, idx) => (
-              <div key={idx} className="w-full bg-gray-100 rounded-t-sm relative group">
-                <div 
-                  className="absolute bottom-0 w-full bg-black rounded-t-sm transition-all duration-500"
-                  style={{ height: `${height}%` }}
-                ></div>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-4 text-[10px] font-bold text-gray-400 uppercase">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+          <h2 className="text-sm font-black uppercase text-gray-900 mb-4">Category Breakdown</h2>
+          <div className="space-y-4">
+            {Object.entries(categoryCounts).map(([cat, count]) => {
+              const pct = totalProducts > 0 ? Math.round((count / totalProducts) * 100) : 0;
+              return (
+                <div key={cat}>
+                  <div className="flex justify-between items-center text-xs font-bold mb-1">
+                    <span className="text-gray-900 uppercase">{cat}</span>
+                    <span className="text-gray-500">{count} products ({pct}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-black h-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* ALERTS / LOW STOCK */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
-          <h2 className="text-sm font-black uppercase text-gray-900 mb-4">Low Stock Alerts</h2>
-          <div className="space-y-3">
-            {[1, 2].map((_, idx) => (
-              <div key={idx} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0">
-                <div>
-                  <p className="text-xs font-bold text-gray-900">Mavis 350 Nylon</p>
-                  <p className="text-[10px] font-bold text-red-500 uppercase">2 Left in stock</p>
-                </div>
-                <button className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded text-gray-600 hover:bg-gray-200">Restock</button>
+        {/* REAL LOW STOCK ALERTS */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-black uppercase text-gray-900">Low Stock Products</h2>
+              <span className="text-[10px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase">
+                Stock &le; 5
+              </span>
+            </div>
+
+            {lowStockProducts.length === 0 ? (
+              <div className="text-center py-8 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                All catalog products are sufficiently stocked.
               </div>
-            ))}
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {lowStockProducts.map((p) => {
+                  const currentStock = getProductTotalStock(p);
+                  const thumb = p.image || (p.images && p.images[0]) || (p.colors && p.colors[0]?.image) || '';
+                  return (
+                    <div key={p.id} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {thumb ? (
+                          <img src={thumb} alt={p.name} className="w-10 h-10 object-contain rounded-md bg-gray-50 border border-gray-100 p-1 shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 shrink-0 font-bold text-xs">
+                            {p.brand?.[0] || 'P'}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{p.name}</p>
+                          <p className="text-[10px] font-bold text-red-500 uppercase">{currentStock} left in stock</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 text-[10px] text-gray-400 font-semibold uppercase">
+            Edit stock levels anytime in the Products manager tab.
           </div>
         </div>
       </div>
 
-      {/* RECENT ORDERS TABLE */}
+      {/* RECENT ORDERS TABLE (PLACEHOLDER FOR RAZORPAY) */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden mt-6">
         <div className="p-5 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-sm font-black uppercase text-gray-900">Recent Orders</h2>
-          <button className="text-xs font-bold text-gray-500 hover:text-black uppercase">View All</button>
+          <div>
+            <h2 className="text-sm font-black uppercase text-gray-900">Recent Customer Orders</h2>
+            <p className="text-[10px] text-gray-400 font-medium">Awaiting Razorpay Payment Gateway Integration</p>
+          </div>
+          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full uppercase">
+            Gateway Pending
+          </span>
         </div>
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black text-gray-400 uppercase tracking-wider">
-              <th className="p-4">Order ID</th>
-              <th className="p-4">Customer</th>
-              <th className="p-4">Product</th>
-              <th className="p-4">Amount</th>
-              <th className="p-4 text-right">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 text-xs font-semibold text-gray-800">
-            {recentOrders.map((order) => (
-              <tr key={order.id} className="hover:bg-gray-50 transition">
-                <td className="p-4 font-black">{order.id}</td>
-                <td className="p-4">{order.name}</td>
-                <td className="p-4 text-gray-500">{order.product}</td>
-                <td className="p-4 font-bold">{order.amount}</td>
-                <td className="p-4 text-right">
-                  <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider ${order.statusColor}`}>
-                    {order.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-12 text-center">
+          <ShoppingCart className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm font-black text-gray-800 uppercase tracking-wider mb-1">No Orders Logged Yet</p>
+          <p className="text-xs text-gray-500 max-w-md mx-auto">
+            Once customer orders are completed via Razorpay checkout, live transaction records, customer names, and fulfillment status will appear here automatically.
+          </p>
+        </div>
       </div>
     </div>
   );
-}
+}

@@ -31,8 +31,8 @@ export default function CategoryPage() {
           price: item.price || 0,
           originalPrice: item.original_price || 0,
           original_price: item.original_price || 0,
-          // Extract first image from the array
-          image: item.images && item.images.length > 0 ? item.images[0] : ''
+          // Extract image with fallbacks to avoid overriding valid images or colors
+          image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
         }));
         setAllProducts(formattedData);
       }

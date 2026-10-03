@@ -39,9 +39,11 @@ export default function ProductCard({ product }: { product: any }) {
 
   const isLiked = isInWishlist(product.id);
 
-  // Supabase Data Handling
+  // Supabase Data Handling: fallback to color swatch/gallery images if main image is empty
   const isOutOfStock = Number(product.stock ?? 0) <= 0;
-  const rawImage = product.image || (product.images && product.images.length > 0 ? product.images[0] : '');
+  const firstColor = product.colors && product.colors.length > 0 ? product.colors[0] : null;
+  const colorFallbackImage = firstColor ? (firstColor.image || (firstColor.images && firstColor.images[0]) || '') : '';
+  const rawImage = product.image || (product.images && product.images.length > 0 ? product.images[0] : '') || colorFallbackImage;
   const displayImage = getHighResImage(rawImage);
   const price = Number(product.price || 0);
   const originalPrice = Number(product.originalPrice || product.original_price || 0);
@@ -242,11 +244,7 @@ export default function ProductCard({ product }: { product: any }) {
           <div className="grid grid-cols-2 h-10">
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                addToCart(product);
-              }}
+              onClick={handleAddToCart}
               className="flex items-center justify-center gap-1 text-[11px] font-bold text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition border-r border-gray-100"
             >
               <ShoppingCart className="w-3.5 h-3.5" /> Cart

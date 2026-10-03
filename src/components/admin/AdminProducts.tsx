@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../library/supabase';
 import { Plus, Edit3, Trash2, CheckCircle2, AlertCircle, Search, X, ImagePlus, ChevronDown, ChevronUp, Upload } from 'lucide-react';
+import RichTextEditor from './RichTextEditor';
 
 interface Variant {
   name: string;
@@ -51,6 +52,23 @@ const TIER_OPTIONS = ['', 'Pro Choice', 'Best Seller', 'Tournament', 'Club Stand
 // Supabase storage bucket name for product images
 const STORAGE_BUCKET = 'product-images';
 
+export const SUPABASE_STORAGE_SQL = `-- Copy & Paste into Supabase SQL Editor (Dashboard -> SQL Editor -> New Query -> Run)
+
+-- 1. Create the storage bucket for product images
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('product-images', 'product-images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Allow public access to view uploaded images
+CREATE POLICY "Public Access"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'product-images');
+
+-- 3. Allow public uploads from the admin page
+CREATE POLICY "Public Uploads"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'product-images');`;
+
 // ─── Upload helper: sends file to Supabase Storage, returns public URL ───────
 async function uploadImageToSupabase(
   file: File,
@@ -62,24 +80,43 @@ async function uploadImageToSupabase(
 
   onProgress?.('Uploading...');
 
-  const { data, error } = await supabase.storage
+  let { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(path, file, {
       cacheControl: '3600',
       upsert: false,
     });
 
+  // If bucket not found, attempt auto-creation
+  if (error && (error.message?.toLowerCase().includes('bucket not found') || (error as any).statusCode === '404')) {
+    onProgress?.('Creating storage bucket...');
+    try {
+      await supabase.storage.createBucket(STORAGE_BUCKET, { public: true });
+      const retry = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, { cacheControl: '3600', upsert: false });
+      data = retry.data;
+      error = retry.error;
+    } catch {
+      // Creation might require service role key, fallback to detailed error below
+    }
+  }
+
   if (error) {
-    // Friendly error for common RLS issue
-    if (error.message?.includes('row-level security') || error.message?.includes('policy')) {
+    if (error.message?.includes('row-level security') || error.message?.includes('policy') || error.message?.includes('RLS')) {
       throw new Error(
-        'Upload blocked by Storage policy. Go to Supabase Dashboard → Storage → product-images → Policies → Add "INSERT for anon" policy.'
+        'Upload blocked by Supabase policy. Run the SQL snippet shown below in your Supabase SQL Editor to enable public uploads.'
+      );
+    }
+    if (error.message?.toLowerCase().includes('bucket not found') || (error as any).statusCode === '404') {
+      throw new Error(
+        'Bucket "product-images" not found in Supabase. Please run the SQL snippet in Supabase SQL Editor or paste image URLs directly!'
       );
     }
     throw new Error(error.message);
   }
 
-  const { data: urlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path);
+  const { data: urlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data!.path);
   onProgress?.('Done');
   return urlData.publicUrl;
 }
@@ -167,7 +204,14 @@ function ImageRow({
   );
 }
 
-// ─── Color card with expandable image gallery ─────────────────────────────────
+interface ColorOption {
+  name: string;
+  image: string;      // thumbnail / swatch image URL
+  images?: string[];  // full gallery for this color
+  variants?: Variant[]; // sizes & stock specific to THIS color
+}
+
+// ─── Color card with expandable image gallery & per-color stock ──────────────
 function ColorCard({
   color,
   index,
@@ -181,6 +225,7 @@ function ColorCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const colorImages = color.images || [];
+  const colorVariants = color.variants || [];
 
   const addImage = () => onChange({ ...color, images: [...colorImages, ''] });
   const updateImage = (i: number, val: string) => {
@@ -189,6 +234,18 @@ function ColorCard({
     onChange({ ...color, images: imgs });
   };
   const removeImage = (i: number) => onChange({ ...color, images: colorImages.filter((_, idx) => idx !== i) });
+
+  const addVariant = () => onChange({ ...color, variants: [...colorVariants, { name: '', stock: 5 }] });
+  const updateVariant = (i: number, updated: Variant) => {
+    const vars = [...colorVariants];
+    vars[i] = updated;
+    onChange({ ...color, variants: vars });
+  };
+  const removeVariant = (i: number) => onChange({ ...color, variants: colorVariants.filter((_, idx) => idx !== i) });
+
+  const totalColorStock = colorVariants.length > 0
+    ? colorVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+    : null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
@@ -231,7 +288,7 @@ function ColorCard({
             type="button"
             onClick={() => setExpanded(!expanded)}
             className="p-1.5 text-gray-400 hover:text-black rounded-lg transition"
-            title={expanded ? 'Collapse' : 'Add color images'}
+            title={expanded ? 'Collapse' : 'Manage images & per-color sizes/stock'}
           >
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
@@ -241,39 +298,107 @@ function ColorCard({
         </div>
       </div>
 
-      {/* Expandable: per-color image gallery */}
+      {/* Expandable: per-color image gallery & per-color size/stock matrix */}
       {expanded && (
-        <div className="border-t border-gray-100 p-3 bg-gray-50 space-y-2">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">
-              Gallery for "{color.name || 'this color'}" ({colorImages.length} image{colorImages.length !== 1 ? 's' : ''})
-            </p>
-            <button
-              type="button"
-              onClick={addImage}
-              className="text-[10px] font-black uppercase tracking-wider text-black bg-white border border-gray-200 px-2 py-1 rounded-lg flex items-center gap-1 hover:bg-gray-50 transition"
-            >
-              <Plus className="w-3 h-3" /> Add Image
-            </button>
+        <div className="border-t border-gray-100 p-4 bg-gray-50/70 space-y-4">
+          {/* Gallery Photos */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-black text-gray-700 uppercase tracking-wider">
+                Photo Gallery for "{color.name || 'this color'}" ({colorImages.length} image{colorImages.length !== 1 ? 's' : ''})
+              </p>
+              <button
+                type="button"
+                onClick={addImage}
+                className="text-[10px] font-black uppercase tracking-wider text-black bg-white border border-gray-200 px-2.5 py-1 rounded-lg flex items-center gap-1 hover:bg-gray-50 transition shadow-2xs"
+              >
+                <Plus className="w-3 h-3" /> Add Image
+              </button>
+            </div>
+
+            {colorImages.length === 0 ? (
+              <p className="text-[11px] text-gray-400 text-center py-2 bg-white rounded-lg border border-dashed border-gray-200">
+                No images yet. Click "+ Add Image" to add photos for this color.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {colorImages.map((img, i) => (
+                  <ImageRow
+                    key={i}
+                    value={img}
+                    onChange={(val) => updateImage(i, val)}
+                    onRemove={() => removeImage(i)}
+                    placeholder={i === 0 ? 'Main photo for this color' : `Angle ${i + 1}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
-          {colorImages.length === 0 ? (
-            <p className="text-[11px] text-gray-400 text-center py-3">
-              No images yet. Click "Add Image" to add gallery photos for this color.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {colorImages.map((img, i) => (
-                <ImageRow
-                  key={i}
-                  value={img}
-                  onChange={(val) => updateImage(i, val)}
-                  onRemove={() => removeImage(i)}
-                  placeholder={i === 0 ? 'Main image for this color' : `Angle ${i + 1}`}
-                />
-              ))}
+          {/* Sizes & Stock for THIS specific color */}
+          <div className="border-t border-gray-200 pt-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-gray-700 uppercase tracking-wider">
+                  Sizes & Stock for "{color.name || 'this color'}"
+                </p>
+                <p className="text-[9px] text-gray-400 font-medium">
+                  Set stock levels for each size in this specific color.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addVariant}
+                className="text-[10px] font-black uppercase tracking-wider text-white bg-black px-2.5 py-1 rounded-lg flex items-center gap-1 hover:bg-neutral-800 transition shadow-2xs"
+              >
+                <Plus className="w-3 h-3" /> Add Size for {color.name || 'Color'}
+              </button>
             </div>
-          )}
+
+            {colorVariants.length === 0 ? (
+              <p className="text-[11px] text-gray-400 text-center py-2 bg-white rounded-lg border border-dashed border-gray-200">
+                No size stocks configured for this color yet. Click "+ Add Size for {color.name || 'Color'}" to add per-color inventory.
+              </p>
+            ) : (
+              <div className="space-y-2 bg-white p-3 rounded-xl border border-gray-200">
+                {colorVariants.map((v, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      placeholder="Size (e.g. UK 7, 4U/G5)"
+                      value={v.name}
+                      onChange={(e) => updateVariant(i, { ...v, name: e.target.value })}
+                      className="flex-1 border border-gray-200 rounded-lg p-1.5 text-xs font-semibold outline-none focus:border-black"
+                    />
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">Stock:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={v.stock}
+                        onChange={(e) => updateVariant(i, { ...v, stock: Number(e.target.value) })}
+                        className="w-20 border border-gray-200 rounded-lg p-1.5 text-xs font-bold text-right outline-none focus:border-black"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeVariant(i)}
+                      className="p-1 text-gray-300 hover:text-red-500 rounded transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {totalColorStock !== null && (
+                  <div className="pt-2 border-t border-gray-100 text-right">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      Total stock for {color.name || 'this color'}: <strong className="text-black">{totalColorStock} pcs</strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -298,10 +423,9 @@ export default function AdminProducts() {
   const [originalPrice, setOriginalPrice] = useState<number | ''>('');
   const [description, setDescription] = useState('');
   const [specs, setSpecs] = useState('');            // DB col: specs
-  const [productImages, setProductImages] = useState<string[]>(['']);
   const [baseStock, setBaseStock] = useState<number | ''>(10);
   const [variants, setVariants] = useState<Variant[]>([]);
-  const [colors, setColors] = useState<ColorOption[]>([]);
+  const [colors, setColors] = useState<ColorOption[]>([{ name: 'DEFAULT', image: '', images: [] }]);
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
 
   // List filters
@@ -329,10 +453,9 @@ export default function AdminProducts() {
     setOriginalPrice('');
     setDescription('');
     setSpecs('');
-    setProductImages(['']);
     setBaseStock(10);
     setVariants([]);
-    setColors([]);
+    setColors([{ name: 'DEFAULT', image: '', images: [] }]);
     setSelectedCollections([]);
   };
 
@@ -347,10 +470,23 @@ export default function AdminProducts() {
     setOriginalPrice(p.original_price || '');
     setDescription(p.description || '');
     setSpecs(p.specs || '');
-    setProductImages(p.images?.length ? p.images : [p.image || '']);
     setBaseStock(p.stock ?? 10);
     setVariants(p.variants || []);
-    setColors((p.colors || []).map(c => ({ name: c.name, image: c.image, images: (c as any).images || [] })));
+    
+    // If product has colors, load them and preserve per-color variants
+    if (p.colors && p.colors.length > 0) {
+      setColors(p.colors.map(c => ({
+        name: c.name,
+        image: c.image || '',
+        images: (c as any).images || [],
+        variants: (c as any).variants || []
+      })));
+    } else {
+      const fallbackImage = p.image || (p.images && p.images[0]) || '';
+      const fallbackImages = p.images && p.images.length > 0 ? p.images : (p.image ? [p.image] : []);
+      setColors([{ name: 'DEFAULT', image: fallbackImage, images: fallbackImages, variants: p.variants || [] }]);
+    }
+
     setSelectedCollections(p.collections || []);
     setActiveTab('editor');
     setStatusMsg(null);
@@ -360,32 +496,46 @@ export default function AdminProducts() {
     e.preventDefault();
     setStatusMsg(null);
 
-    const calculatedStock = variants.length > 0
-      ? variants.reduce((acc, curr) => acc + (Number(curr.stock) || 0), 0)
-      : Number(baseStock) || 0;
+    const cleanColors = colors.filter(c => c.name.trim() !== '').map(c => ({
+      name: c.name.trim(),
+      image: c.image.trim(),
+      images: (c.images || []).map(u => u.trim()).filter(Boolean),
+      variants: (c.variants || []).filter(v => v.name.trim() !== '').map(v => ({
+        name: v.name.trim(),
+        stock: Number(v.stock) || 0
+      }))
+    }));
 
-    const cleanImages = productImages.map(u => u.trim()).filter(Boolean);
+    // Calculate total stock from per-color variants, top-level variants, or baseStock
+    const hasPerColorVariants = cleanColors.some(c => c.variants && c.variants.length > 0);
+    const calculatedStock = hasPerColorVariants
+      ? cleanColors.reduce((acc, c) => acc + (c.variants || []).reduce((sum, v) => sum + (Number(v.stock) || 0), 0), 0)
+      : (variants.length > 0
+          ? variants.reduce((acc, curr) => acc + (Number(curr.stock) || 0), 0)
+          : Number(baseStock) || 0);
 
-    // Only include columns that EXIST in the Supabase products table
+    // Derive primary image & all images array automatically from color options
+    const allColorImages = Array.from(
+      new Set(cleanColors.flatMap(c => [c.image, ...(c.images || [])]).filter(Boolean))
+    );
+    const mainImage = cleanColors[0]?.image || cleanColors[0]?.images?.[0] || allColorImages[0] || '';
+
+    // Payload maps to existing Supabase columns
     const payload: any = {
       name: name.trim(),
       brand: brand.trim(),
       category,
-      series: series.trim() || null,          // DB col: series
-      tier: tier.trim() || null,              // DB col: tier (display badge)
+      series: series.trim() || null,
+      tier: tier.trim() || null,
       price: Number(price),
       original_price: originalPrice ? Number(originalPrice) : Number(price),
       description: description.trim(),
-      specs: specs.trim() || null,            // DB col: specs
-      image: cleanImages[0] || '',
-      images: cleanImages,
+      specs: specs.trim() || null,
+      image: mainImage,
+      images: allColorImages,
       stock: calculatedStock,
       variants: variants.filter(v => v.name.trim() !== ''),
-      colors: colors.filter(c => c.name.trim() !== '').map(c => ({
-        name: c.name.trim(),
-        image: c.image.trim(),
-        images: (c.images || []).map(u => u.trim()).filter(Boolean),
-      })),
+      colors: cleanColors,
       collections: selectedCollections,
     };
 
@@ -641,43 +791,7 @@ export default function AdminProducts() {
             </div>
           </div>
 
-          {/* Product Images */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Product Images</h3>
-                <p className="text-[11px] text-gray-400 mt-0.5">First image is the main display image. Add multiple angles.</p>
-              </div>
-              <button type="button" onClick={() => setProductImages([...productImages, ''])}
-                className="bg-black text-white px-3 py-1.5 rounded-xl text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-neutral-800 transition">
-                <Plus className="w-3.5 h-3.5" /> Add Image
-              </button>
-            </div>
-
-            {/* Preview strip */}
-            {productImages.some(u => u.trim()) && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {productImages.filter(u => u.trim()).map((img, i) => (
-                  <div key={i} className={`shrink-0 w-16 h-16 rounded-xl border-2 p-1 bg-gray-50 ${i === 0 ? 'border-black' : 'border-gray-200'}`}>
-                    <img src={img} alt="" className="w-full h-full object-contain"
-                      onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              {productImages.map((img, i) => (
-                <ImageRow
-                  key={i}
-                  value={img}
-                  onChange={val => { const imgs = [...productImages]; imgs[i] = val; setProductImages(imgs); }}
-                  onRemove={() => setProductImages(productImages.filter((_, idx) => idx !== i))}
-                  placeholder={i === 0 ? 'Main product image URL' : `Additional image ${i + 1}`}
-                />
-              ))}
-            </div>
-          </div>
+          {/* Colors & Image Galleries */}
 
           {/* Colors with per-color galleries */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-3">
@@ -708,58 +822,17 @@ export default function AdminProducts() {
             </div>
           </div>
 
-          {/* Variants / Sizes */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">Sizes / Variants</h3>
-                <p className="text-[11px] text-gray-400 mt-0.5">e.g. UK 7, 4U/G5, 85g — each with its own stock.</p>
-              </div>
-              <button type="button" onClick={() => setVariants([...variants, { name: '', stock: 5 }])}
-                className="bg-black text-white px-3 py-1.5 rounded-xl text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-neutral-800 transition">
-                <Plus className="w-3.5 h-3.5" /> Add Variant
-              </button>
-            </div>
-            <div className="space-y-2">
-              {variants.map((v, i) => (
-                <div key={i} className="flex items-center gap-3 bg-gray-50 p-3 border border-gray-200 rounded-xl">
-                  <input type="text" placeholder="Size / Variant Name" value={v.name}
-                    onChange={e => { const newV = [...variants]; newV[i].name = e.target.value; setVariants(newV); }}
-                    className="flex-1 border border-gray-200 rounded-lg p-2 text-xs font-semibold outline-none focus:border-black bg-white transition" />
-                  <div>
-                    <label className="text-[9px] font-black text-gray-400 uppercase block mb-0.5">Stock</label>
-                    <input type="number" value={v.stock}
-                      onChange={e => { const newV = [...variants]; newV[i].stock = Number(e.target.value); setVariants(newV); }}
-                      className="w-20 border border-gray-200 rounded-lg p-2 text-xs font-semibold outline-none focus:border-black bg-white transition" />
-                  </div>
-                  <button type="button" onClick={() => setVariants(variants.filter((_, idx) => idx !== i))}
-                    className="p-2 text-gray-300 hover:text-red-500 rounded-lg transition">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              {variants.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-4">No variants added. Base stock will be used.</p>
-              )}
-            </div>
-          </div>
+
 
           {/* Description & Specs */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
             <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider border-b border-gray-100 pb-3">Description & Specifications</h3>
             <div>
-              <label className="block text-xs font-black text-gray-500 uppercase mb-1.5">
-                Product Description
-                <span className="ml-1 text-[9px] text-gray-400 normal-case font-medium">(DB: description)</span>
+              <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 flex items-center justify-between">
+                <span>Product Description <span className="ml-1 text-[9px] text-gray-400 normal-case font-medium">(DB: description)</span></span>
+                <span className="text-[10px] text-gray-400 font-normal">Supports Bold, Italic, Headings & Lists</span>
               </label>
-              <textarea
-                rows={5}
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="Write a detailed product description with key features and benefits..."
-                className="w-full border border-gray-300 rounded-xl p-3 text-sm font-medium focus:outline-none focus:border-black transition resize-y leading-relaxed"
-              />
-              <p className="text-[10px] text-gray-400 mt-1">{description.length} characters</p>
+              <RichTextEditor value={description} onChange={setDescription} />
             </div>
             <div>
               <label className="block text-xs font-black text-gray-500 uppercase mb-1.5">

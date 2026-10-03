@@ -1,130 +1,228 @@
-import { useState } from 'react';
-import { IndianRupee, TrendingUp, TrendingDown, Calendar, ShoppingBag, Percent } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { IndianRupee, Package, AlertTriangle, Layers, Calendar, ShieldAlert, BarChart2 } from 'lucide-react';
+import { supabase } from '../../library/supabase';
 
-type AnalyticsTab = 'revenue' | 'orders' | 'products';
+interface Product {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  price: number;
+  stock: number;
+  colors?: Array<{ name: string; sizes?: Array<{ stock: number }> }>;
+  variants?: Array<{ stock: number }>;
+}
 
 export default function AdminAnalytics() {
-  const [activeTab, setActiveTab] = useState<AnalyticsTab>('revenue');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'sales'>('inventory');
 
-  // Simulated chart heights (percentages) for the bar graph
-  const chartData = [35, 50, 40, 65, 55, 80, 100, 75, 90, 60, 85, 95];
-  const chartLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from('products').select('*');
+      if (!error && data) {
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error('Error fetching analytics data:', err);
+    } font-semibold finally {
+      setLoading(false);
+    }
+  };
+
+  const getProductTotalStock = (product: Product): number => {
+    if (Array.isArray(product.colors) && product.colors.length > 0) {
+      let sum = 0;
+      let hasColorStock = false;
+      for (const col of product.colors) {
+        if (Array.isArray(col.sizes) && col.sizes.length > 0) {
+          hasColorStock = true;
+          for (const sz of col.sizes) {
+            sum += Number(sz.stock || 0);
+          }
+        }
+      }
+      if (hasColorStock) return sum;
+    }
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+      let sum = 0;
+      for (const v of product.variants) {
+        sum += Number(v.stock || 0);
+      }
+      return sum;
+    }
+    return Number(product.stock || 0);
+  };
+
+  const totalProducts = products.length;
+  const totalValuation = products.reduce((acc, p) => acc + Number(p.price || 0) * getProductTotalStock(p), 0);
+  const avgPrice = totalProducts > 0 ? Math.round(products.reduce((acc, p) => acc + Number(p.price || 0), 0) / totalProducts) : 0;
+  const lowStockCount = products.filter((p) => getProductTotalStock(p) <= 5).length;
+
+  // Price tier breakdown
+  const budgetTier = products.filter((p) => Number(p.price) <= 3000).length;
+  const midTier = products.filter((p) => Number(p.price) > 3000 && Number(p.price) <= 10000).length;
+  const premiumTier = products.filter((p) => Number(p.price) > 10000).length;
+
+  // Category stock volume breakdown
+  const categoryStockVolume: Record<string, number> = {};
+  products.forEach((p) => {
+    const cat = p.category || 'Uncategorized';
+    categoryStockVolume[cat] = (categoryStockVolume[cat] || 0) + getProductTotalStock(p);
+  });
+  const maxCategoryVolume = Math.max(...Object.values(categoryStockVolume), 1);
 
   return (
     <div>
-      <h1 className="text-2xl font-black text-gray-900 uppercase mb-2">Analytics</h1>
-      <p className="text-xs text-gray-500 font-semibold mb-8">Detailed historical performance and sales data.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 uppercase">Analytics & Inventory Metrics</h1>
+          <p className="text-xs text-gray-500 font-semibold">Live catalog stats, valuation, and category stock volume.</p>
+        </div>
 
-      {/* Date Filter */}
-      <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
         <div className="flex gap-2">
-          {[
-            { id: 'revenue', label: 'Revenue' },
-            { id: 'orders', label: 'Orders' },
-            { id: 'products', label: 'Products' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as AnalyticsTab)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-black text-white' 
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-black hover:text-black'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold">
-          <Calendar className="w-4 h-4 text-gray-400" />
-          <select className="bg-transparent uppercase outline-none cursor-pointer">
-            <option>Last 30 Days</option>
-            <option>Last 3 Months</option>
-            <option>Last 6 Months</option>
-            <option>This Year (2026)</option>
-          </select>
+          <button
+            onClick={() => setActiveTab('inventory')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${
+              activeTab === 'inventory' ? 'bg-black text-white' : 'bg-white text-gray-500 border border-gray-200'
+            }`}
+          >
+            Inventory Analytics
+          </button>
+          <button
+            onClick={() => setActiveTab('sales')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${
+              activeTab === 'sales' ? 'bg-black text-white' : 'bg-white text-gray-500 border border-gray-200'
+            }`}
+          >
+            Sales Timeline
+          </button>
         </div>
       </div>
 
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Gross Revenue</p>
-          <p className="text-2xl font-black text-gray-900 mb-2">₹12,45,000</p>
-          <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase">
-            <TrendingUp className="w-3 h-3" /> +14.5% vs previous
-          </div>
-        </div>
-        
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Average Order Value (AOV)</p>
-          <p className="text-2xl font-black text-gray-900 mb-2">₹8,450</p>
-          <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase">
-            <TrendingUp className="w-3 h-3" /> +5.2% vs previous
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Total Refunds</p>
-          <p className="text-2xl font-black text-gray-900 mb-2">₹42,000</p>
-          <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase">
-            <TrendingDown className="w-3 h-3" /> -2.1% vs previous
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Discounts Applied</p>
-          <p className="text-2xl font-black text-gray-900 mb-2">₹18,500</p>
-          <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase">
-            <Percent className="w-3 h-3" /> 1.5% of total sales
-          </div>
+      {/* RAZORPAY NOTICE */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 mb-6">
+        <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="text-xs">
+          <p className="font-bold text-amber-900 uppercase tracking-wide">Razorpay Integration Notice</p>
+          <p className="text-amber-700 mt-0.5 font-medium">
+            Historical sales timeline analytics will populate live when Razorpay payment API credentials are added. All metrics below are live calculations from your Supabase catalog database.
+          </p>
         </div>
       </div>
 
-      {/* Main Chart Section */}
-      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
-        <h2 className="text-sm font-black uppercase text-gray-900 mb-8">
-          {activeTab === 'revenue' ? 'Revenue Timeline (2026)' : activeTab === 'orders' ? 'Order Volume' : 'Product Sales'}
-        </h2>
-        
-        {/* CSS Bar Chart Simulation */}
-        <div className="relative h-72">
-          {/* Y-Axis Guidelines */}
-          <div className="absolute inset-0 flex flex-col justify-between text-[10px] font-bold text-gray-300">
-            <div className="border-b border-gray-100 w-full pb-1">100k</div>
-            <div className="border-b border-gray-100 w-full pb-1">75k</div>
-            <div className="border-b border-gray-100 w-full pb-1">50k</div>
-            <div className="border-b border-gray-100 w-full pb-1">25k</div>
-            <div className="border-b-0 w-full pb-1">0</div>
+      {activeTab === 'inventory' ? (
+        <>
+          {/* Key Metrics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Catalog Stock Value</p>
+              <p className="text-2xl font-black text-gray-900 mb-1">₹{totalValuation.toLocaleString('en-IN')}</p>
+              <p className="text-[10px] text-emerald-600 font-bold uppercase">Total Inventory Asset</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Average Unit Price</p>
+              <p className="text-2xl font-black text-gray-900 mb-1">₹{avgPrice.toLocaleString('en-IN')}</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase">Across {totalProducts} Products</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Low Stock Alerts</p>
+              <p className="text-2xl font-black text-red-600 mb-1">{lowStockCount}</p>
+              <p className="text-[10px] text-red-500 font-bold uppercase">Stock &le; 5 units</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Total Active SKUs</p>
+              <p className="text-2xl font-black text-gray-900 mb-1">{totalProducts}</p>
+              <p className="text-[10px] text-purple-600 font-bold uppercase">Live Products</p>
+            </div>
           </div>
 
-          {/* Bars */}
-          <div className="absolute inset-0 pl-10 flex items-end justify-between gap-2 pb-5 z-10">
-            {chartData.map((height, idx) => (
-              <div key={idx} className="w-full flex justify-center group relative h-full items-end">
-                {/* Tooltip on hover */}
-                <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-black text-white text-[10px] font-bold py-1 px-2 rounded whitespace-nowrap transition pointer-events-none">
-                  ₹{(height * 1000).toLocaleString('en-IN')}
-                </div>
-                {/* The Bar */}
-                <div 
-                  className="w-full max-w-[2.5rem] bg-black hover:bg-neutral-700 rounded-t-sm transition-all duration-500"
-                  style={{ height: `${height}%` }}
-                ></div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* CATEGORY STOCK VOLUME CHART */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
+              <h2 className="text-sm font-black uppercase text-gray-900 mb-6">Stock Volume by Category</h2>
+              <div className="space-y-4">
+                {Object.entries(categoryStockVolume).map(([cat, vol]) => {
+                  const pct = Math.round((vol / maxCategoryVolume) * 100);
+                  return (
+                    <div key={cat}>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="text-gray-900 uppercase">{cat}</span>
+                        <span className="text-gray-600">{vol} Units</span>
+                      </div>
+                      <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
+                        <div className="bg-black h-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </div>
 
-          {/* X-Axis Labels */}
-          <div className="absolute bottom-0 left-10 right-0 flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-            {chartLabels.map((label, idx) => (
-              <span key={idx} className="w-full text-center">{label}</span>
-            ))}
+            {/* PRICE TIER DISTRIBUTION */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs">
+              <h2 className="text-sm font-black uppercase text-gray-900 mb-6">Price Tier Distribution</h2>
+              <div className="space-y-6">
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-gray-800 uppercase">Budget Tier (&le; ₹3,000)</span>
+                    <span className="font-black text-gray-900">{budgetTier} items</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-full transition-all duration-500"
+                      style={{ width: `${totalProducts ? (budgetTier / totalProducts) * 100 : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-gray-800 uppercase">Mid-Range Tier (₹3,001 - ₹10,000)</span>
+                    <span className="font-black text-gray-900">{midTier} items</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-purple-600 h-full transition-all duration-500"
+                      style={{ width: `${totalProducts ? (midTier / totalProducts) * 100 : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-gray-800 uppercase">Premium Tier (&gt; ₹10,000)</span>
+                    <span className="font-black text-gray-900">{premiumTier} items</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-600 h-full transition-all duration-500"
+                      style={{ width: `${totalProducts ? (premiumTier / totalProducts) * 100 : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+        </>
+      ) : (
+        <div className="bg-white p-12 rounded-xl border border-gray-200 text-center shadow-xs">
+          <BarChart2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-base font-black text-gray-900 uppercase tracking-wide mb-2">Sales Analytics Awaiting Razorpay API Keys</h3>
+          <p className="text-xs text-gray-500 max-w-md mx-auto">
+            Once you connect Razorpay API keys, complete sales timelines, Gross Revenue, Average Order Value (AOV), and refund tracking will render automatically here.
+          </p>
         </div>
-      </div>
+      )}
     </div>
   );
-}
+}
