@@ -31,7 +31,7 @@ export default function AdminAnalytics() {
       }
     } catch (err) {
       console.error('Error fetching analytics data:', err);
-    } font-semibold finally {
+    } finally {
       setLoading(false);
     }
   };
