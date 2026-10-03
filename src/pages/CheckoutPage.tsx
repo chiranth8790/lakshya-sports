@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../library/supabase';
 import { 
@@ -27,7 +27,6 @@ interface OrderItem {
 
 export default function CheckoutPage() {
   const location = useLocation();
-  const navigate = useNavigate();
   const { cart, clearCart } = useCart() as any;
 
   // 1. Resolve Checkout Source: Buy Now single-item state takes priority over persistent cart
@@ -73,7 +72,7 @@ export default function CheckoutPage() {
 
     try {
       // 2. Persist to Supabase 'orders' table
-      const { data: orderData, error: orderError } = await supabase
+      const { error: orderError } = await supabase
         .from('orders')
         .insert([
           {

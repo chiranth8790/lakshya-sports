@@ -364,7 +364,7 @@ export default function RetailHeader() {
                     ? 'ring-2 ring-offset-1 ring-opacity-60 shadow-md'
                     : 'border border-gray-200'
                 }`}
-                style={isOpen ? { ringColor: 'rgba(0,0,0,0.3)' } : {}}
+                style={isOpen ? { boxShadow: '0 0 0 2px rgba(0,0,0,0.3)' } : undefined}
               >
                 {/* Accordion Header */}
                 <button

@@ -214,12 +214,10 @@ interface ColorOption {
 // ─── Color card with expandable image gallery & per-color stock ──────────────
 function ColorCard({
   color,
-  index,
   onChange,
   onRemove,
 }: {
   color: ColorOption;
-  index: number;
   onChange: (updated: ColorOption) => void;
   onRemove: () => void;
 }) {
@@ -811,7 +809,6 @@ export default function AdminProducts() {
                 <ColorCard
                   key={i}
                   color={c}
-                  index={i}
                   onChange={updated => { const newC = [...colors]; newC[i] = updated; setColors(newC); }}
                   onRemove={() => setColors(colors.filter((_, idx) => idx !== i))}
                 />

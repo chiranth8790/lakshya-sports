@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { IndianRupee, Package, AlertTriangle, Layers, Calendar, ShieldAlert, BarChart2 } from 'lucide-react';
+import { ShieldAlert, BarChart2, RefreshCw } from 'lucide-react';
 import { supabase } from '../../library/supabase';
 
 interface Product {
@@ -77,6 +77,16 @@ export default function AdminAnalytics() {
     categoryStockVolume[cat] = (categoryStockVolume[cat] || 0) + getProductTotalStock(p);
   });
   const maxCategoryVolume = Math.max(...Object.values(categoryStockVolume), 1);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-3 text-gray-500 font-bold text-sm uppercase">
+          <RefreshCw className="w-5 h-5 animate-spin" /> Loading Analytics Data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

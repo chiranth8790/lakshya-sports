@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { IndianRupee, Package, AlertTriangle, Layers, ArrowRight, ShieldAlert, ShoppingCart, RefreshCw } from 'lucide-react';
+import { IndianRupee, Package, AlertTriangle, Layers, ShieldAlert, ShoppingCart, RefreshCw } from 'lucide-react';
 import { supabase } from '../../library/supabase';
 
 interface Product {
