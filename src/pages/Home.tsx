@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, Truck, RotateCcw, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PRODUCTS } from '../data/products';
 import ProductCard from '../components/ProductCard';
+import { supabase } from '../library/supabase';
 
 const SLIDES = [
   {
@@ -32,8 +32,14 @@ const SLIDES = [
 ];
 
 export default function Home() {
+  // Slideshow State
   const [currentSlide, setCurrentSlide] = useState(0);
 
+  // Supabase State
+  const [newArrivals, setNewArrivals] = useState<any[]>([]);
+  const [recommendedGear, setRecommendedGear] = useState<any[]>([]);
+
+  // Slideshow Timer
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
@@ -44,8 +50,42 @@ export default function Home() {
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + SLIDES.length) % SLIDES.length);
 
-  const recommendedGear = PRODUCTS.slice(0, 4);
-  const newArrivals = PRODUCTS.filter((p) => p.isNew);
+  // Fetch Recommended Products from Supabase (any in-stock product, limit 4)
+  useEffect(() => {
+    const fetchRecommended = async () => {
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .gt('stock', 0)
+        .limit(4);
+
+      if (data) {
+        const formatted = data.map((item) => ({
+          ...item,
+          price: item.price || 0,
+          originalPrice: item.original_price || 0,
+          image: item.images && item.images.length > 0 ? item.images[0] : '',
+        }));
+        setRecommendedGear(formatted);
+      }
+    };
+    fetchRecommended();
+  }, []);
+
+  // Fetch New Arrivals from Supabase
+  useEffect(() => {
+    const fetchNewArrivals = async () => {
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .contains('collections', ['new_arrivals'])
+        .limit(4); // Shows 4 products
+        
+      if (data) setNewArrivals(data);
+    };
+    
+    fetchNewArrivals();
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-100 pb-16">

@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Search, ShoppingBag, X, ChevronDown, ChevronLeft, Heart, User, TrendingUp } from 'lucide-react';
+import { Menu, Search, ShoppingBag, X, ChevronDown, ChevronLeft, Heart, User, TrendingUp, ChevronRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
-import { PRODUCTS } from '../data/products';
+import { supabase } from '../library/supabase';
 
 interface SubCategory {
   name: string;
   path: string;
-  image: string;
+  icon: string;        // emoji icon
+  gradient: string;   // tailwind gradient classes
+  glow: string;       // glow color for hover
 }
 
 interface SportCategory {
   id: string;
   title: string;
+  emoji: string;
   badge?: string;
+  accent: string;     // active accent color class
   subCategories: SubCategory[];
 }
 
@@ -22,107 +26,147 @@ const SPORTS_CATALOG: SportCategory[] = [
   {
     id: 'badminton',
     title: 'Badminton',
+    emoji: '🏸',
     badge: 'Pro Shop',
+    accent: 'from-violet-600 to-purple-700',
     subCategories: [
       {
         name: 'Rackets',
         path: '/category/rackets',
-        image: 'https://images.unsplash.com/photo-1613918431703-aa6321287c80?w=500&auto=format&fit=crop&q=80',
+        icon: '🏸',
+        gradient: 'from-violet-500 via-purple-600 to-indigo-700',
+        glow: 'hover:shadow-purple-300',
       },
       {
         name: 'Shoes',
         path: '/category/shoes',
-        image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500&auto=format&fit=crop&q=80',
+        icon: '👟',
+        gradient: 'from-indigo-500 via-blue-600 to-cyan-600',
+        glow: 'hover:shadow-blue-300',
       },
       {
-        name: 'Shuttles',
+        name: 'Shuttlecocks',
         path: '/category/shuttles',
-        image: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=500&auto=format&fit=crop&q=80',
+        icon: '🪶',
+        gradient: 'from-fuchsia-500 via-pink-600 to-rose-600',
+        glow: 'hover:shadow-pink-300',
       },
       {
         name: 'Kitbags',
         path: '/category/kitbags',
-        image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500&auto=format&fit=crop&q=80',
+        icon: '🎒',
+        gradient: 'from-purple-600 via-violet-700 to-indigo-800',
+        glow: 'hover:shadow-violet-300',
       },
       {
         name: 'Grips & Strings',
         path: '/category/grips-and-strings',
-        image: 'https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=500&auto=format&fit=crop&q=80',
+        icon: '🎯',
+        gradient: 'from-cyan-500 via-teal-600 to-emerald-700',
+        glow: 'hover:shadow-teal-300',
       },
     ],
   },
   {
     id: 'cricket',
     title: 'Cricket',
+    emoji: '🏏',
     badge: 'Willow & Gear',
+    accent: 'from-amber-500 to-orange-600',
     subCategories: [
       {
         name: 'English Willow Bats',
         path: '/category/cricket-bats-english',
-        image: 'https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=500&auto=format&fit=crop&q=80',
+        icon: '🏏',
+        gradient: 'from-amber-500 via-orange-600 to-red-700',
+        glow: 'hover:shadow-orange-300',
       },
       {
         name: 'Kashmir Willow Bats',
         path: '/category/cricket-bats-kashmir',
-        image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=500&auto=format&fit=crop&q=80',
+        icon: '🪵',
+        gradient: 'from-yellow-500 via-amber-600 to-orange-700',
+        glow: 'hover:shadow-amber-300',
       },
       {
-        name: 'Leather & Tennis Balls',
+        name: 'Leather Balls',
         path: '/category/cricket-balls',
-        image: 'https://images.unsplash.com/photo-1589801258579-18e091f4ca26?w=500&auto=format&fit=crop&q=80',
+        icon: '🔴',
+        gradient: 'from-red-500 via-rose-600 to-pink-700',
+        glow: 'hover:shadow-red-300',
       },
       {
-        name: 'Batting Pads & Gloves',
+        name: 'Pads & Gloves',
         path: '/category/cricket-protection',
-        image: 'https://images.unsplash.com/photo-1624880357913-a8539238245b?w=500&auto=format&fit=crop&q=80',
+        icon: '🧤',
+        gradient: 'from-orange-500 via-amber-600 to-yellow-600',
+        glow: 'hover:shadow-yellow-300',
       },
     ],
   },
   {
     id: 'football',
     title: 'Football',
+    emoji: '⚽',
+    accent: 'from-emerald-500 to-green-700',
     subCategories: [
       {
-        name: 'Match & Training Balls',
+        name: 'Match Balls',
         path: '/category/football-balls',
-        image: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=500&auto=format&fit=crop&q=80',
+        icon: '⚽',
+        gradient: 'from-emerald-500 via-green-600 to-teal-700',
+        glow: 'hover:shadow-green-300',
       },
       {
-        name: 'Turf & Stud Boots',
+        name: 'Turf Boots',
         path: '/category/football-boots',
-        image: 'https://images.unsplash.com/photo-1511886929837-354d827aae26?w=500&auto=format&fit=crop&q=80',
+        icon: '🦶',
+        gradient: 'from-green-500 via-emerald-600 to-cyan-700',
+        glow: 'hover:shadow-emerald-300',
       },
       {
-        name: 'Shinguards & Goalie Gloves',
+        name: 'Goalie Gloves',
         path: '/category/football-accessories',
-        image: 'https://images.unsplash.com/photo-1600679472829-3044539ce8ed?w=500&auto=format&fit=crop&q=80',
+        icon: '🥅',
+        gradient: 'from-teal-500 via-green-600 to-lime-700',
+        glow: 'hover:shadow-teal-300',
       },
     ],
   },
   {
     id: 'other-sports',
     title: 'Other Sports',
+    emoji: '🎱',
     badge: 'Indoor & Court',
+    accent: 'from-sky-500 to-blue-700',
     subCategories: [
       {
-        name: 'Carrom Boards & Coins',
+        name: 'Carrom Boards',
         path: '/category/carrom',
-        image: 'https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?w=500&auto=format&fit=crop&q=80',
+        icon: '🎱',
+        gradient: 'from-sky-500 via-blue-600 to-indigo-700',
+        glow: 'hover:shadow-sky-300',
       },
       {
         name: 'Volleyball & Nets',
         path: '/category/volleyball',
-        image: 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=500&auto=format&fit=crop&q=80',
+        icon: '🏐',
+        gradient: 'from-blue-500 via-indigo-600 to-violet-700',
+        glow: 'hover:shadow-blue-300',
       },
       {
         name: 'Basketballs',
         path: '/category/basketball',
-        image: 'https://images.unsplash.com/photo-1519766304817-4f37bda74a29?w=500&auto=format&fit=crop&q=80',
+        icon: '🏀',
+        gradient: 'from-orange-500 via-red-500 to-rose-600',
+        glow: 'hover:shadow-orange-300',
       },
       {
-        name: 'Throwball Equipment',
+        name: 'Throwball',
         path: '/category/throwball',
-        image: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=500&auto=format&fit=crop&q=80',
+        icon: '🎾',
+        gradient: 'from-lime-500 via-green-600 to-emerald-700',
+        glow: 'hover:shadow-lime-300',
       },
     ],
   },
@@ -135,6 +179,8 @@ export default function RetailHeader() {
   const [searchQuery, setSearchQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>('badminton');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const { totalCount } = useCart();
   const { wishlistCount } = useWishlist();
@@ -148,16 +194,57 @@ export default function RetailHeader() {
     } else {
       document.body.style.overflow = 'auto';
       setSearchQuery('');
+      setSearchResults([]);
     }
   }, [searchOpen]);
 
-  const searchResults = searchQuery.trim()
-    ? PRODUCTS.filter((p) =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchQuery.toLowerCase())
-      ).slice(0, 4)
-    : PRODUCTS.slice(0, 3);
+  // Live Supabase search with debounce
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    setSearchLoading(true);
+
+    const timer = setTimeout(async () => {
+      if (trimmed) {
+        // Search by name, brand, or category using ilike
+        const { data } = await supabase
+          .from('products')
+          .select('*')
+          .or(
+            `name.ilike.%${trimmed}%,brand.ilike.%${trimmed}%,category.ilike.%${trimmed}%`
+          )
+          .gt('stock', 0)
+          .limit(4);
+
+        setSearchResults(
+          (data || []).map((item) => ({
+            ...item,
+            price: item.price || 0,
+            originalPrice: item.original_price || 0,
+            image: item.images && item.images.length > 0 ? item.images[0] : '',
+          }))
+        );
+      } else {
+        // No query: show top 3 in-stock suggestions
+        const { data } = await supabase
+          .from('products')
+          .select('*')
+          .gt('stock', 0)
+          .limit(3);
+
+        setSearchResults(
+          (data || []).map((item) => ({
+            ...item,
+            price: item.price || 0,
+            originalPrice: item.original_price || 0,
+            image: item.images && item.images.length > 0 ? item.images[0] : '',
+          }))
+        );
+      }
+      setSearchLoading(false);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchOpen]);
 
   const toggleAccordion = (categoryId: string) => {
     setActiveCategory((prev) => (prev === categoryId ? null : categoryId));
@@ -272,23 +359,36 @@ export default function RetailHeader() {
             return (
               <div
                 key={sport.id}
-                className="border border-gray-200 rounded-xl overflow-hidden transition-colors"
+                className={`rounded-xl overflow-hidden transition-all duration-200 ${
+                  isOpen
+                    ? 'ring-2 ring-offset-1 ring-opacity-60 shadow-md'
+                    : 'border border-gray-200'
+                }`}
+                style={isOpen ? { ringColor: 'rgba(0,0,0,0.3)' } : {}}
               >
+                {/* Accordion Header */}
                 <button
                   type="button"
                   onClick={() => toggleAccordion(sport.id)}
-                  className={`w-full flex items-center justify-between p-3.5 text-left transition-colors ${
-                    isOpen ? 'bg-black text-white' : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                  className={`w-full flex items-center justify-between p-3.5 text-left transition-all duration-200 ${
+                    isOpen
+                      ? `bg-gradient-to-r ${sport.accent} text-white shadow-sm`
+                      : 'bg-white hover:bg-gray-50 text-gray-900'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`text-xl leading-none transition-transform duration-300 ${
+                      isOpen ? 'scale-110' : ''
+                    }`}>
+                      {sport.emoji}
+                    </span>
                     <span className="font-black text-xs uppercase tracking-wider">
                       {sport.title}
                     </span>
                     {sport.badge && (
                       <span
-                        className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
-                          isOpen ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'
+                        className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                          isOpen ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
                         }`}
                       >
                         {sport.badge}
@@ -296,31 +396,42 @@ export default function RetailHeader() {
                     )}
                   </div>
                   <ChevronDown
-                    className={`w-4 h-4 transition-transform duration-300 ${
-                      isOpen ? 'rotate-180 text-white' : 'text-gray-500'
+                    className={`w-4 h-4 transition-transform duration-300 flex-shrink-0 ${
+                      isOpen ? 'rotate-180 text-white' : 'text-gray-400'
                     }`}
                   />
                 </button>
 
+                {/* Subcategory Grid */}
                 {isOpen && (
-                  <div className="p-3 bg-white border-t border-gray-100">
-                    <div className="grid grid-cols-2 gap-2.5">
+                  <div className="p-3 bg-gray-50 border-t border-gray-100">
+                    <div className="grid grid-cols-2 gap-2">
                       {sport.subCategories.map((sub) => (
                         <Link
                           key={sub.name}
                           to={sub.path}
                           onClick={() => setMenuOpen(false)}
-                          className="group relative h-24 rounded-lg overflow-hidden border border-gray-200 shadow-2xs hover:shadow-md transition-all duration-300 hover:scale-[1.02] active:scale-95 bg-gray-100 flex items-end p-2"
+                          className={`group relative flex flex-col items-center justify-center gap-2 h-[90px] rounded-xl overflow-hidden shadow-sm transition-all duration-250 hover:scale-[1.04] hover:shadow-lg active:scale-95 ${sub.glow} cursor-pointer`}
                         >
-                          <img
-                            src={sub.image}
-                            alt={sub.name}
-                            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-500"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent group-hover:from-black/95 transition-all duration-300" />
-                          <p className="relative z-10 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-tight leading-tight group-hover:text-yellow-300 transition-colors drop-shadow-sm">
+                          {/* Gradient background */}
+                          <div className={`absolute inset-0 bg-gradient-to-br ${sub.gradient} transition-all duration-300`} />
+                          {/* Subtle pattern overlay */}
+                          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+                          {/* Shine effect on hover */}
+                          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                          {/* Icon */}
+                          <span className="relative z-10 text-3xl leading-none drop-shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5">
+                            {sub.icon}
+                          </span>
+
+                          {/* Label */}
+                          <span className="relative z-10 text-white text-[10px] font-black uppercase tracking-wide text-center leading-tight px-1.5">
                             {sub.name}
-                          </p>
+                          </span>
+
+                          {/* Arrow on hover */}
+                          <ChevronRight className="absolute bottom-2 right-2 w-3 h-3 text-white/60 opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-0.5" />
                         </Link>
                       ))}
                     </div>
@@ -395,12 +506,14 @@ export default function RetailHeader() {
                 {searchQuery.trim() ? 'Matched Results' : 'Suggested Gear'}
               </h3>
 
-              {searchResults.length > 0 ? (
+              {searchLoading ? (
+                <p className="text-xs text-gray-400 font-medium animate-pulse">Searching...</p>
+              ) : searchResults.length > 0 ? (
                 <div className="space-y-3">
                   {searchResults.map((product) => (
                     <Link
                       key={product.id}
-                      to={`/category/${product.category.toLowerCase()}`}
+                      to={`/product/${product.id}`}
                       onClick={() => setSearchOpen(false)}
                       className="flex items-center gap-4 p-2 rounded-xl hover:bg-gray-50 border border-gray-100 transition group"
                     >
@@ -420,11 +533,13 @@ export default function RetailHeader() {
                         </h4>
                         <div className="flex items-baseline gap-2 mt-0.5">
                           <span className="text-xs font-black text-red-600">
-                            ₹{product.price.toLocaleString('en-IN')}
+                            ₹{Number(product.price).toLocaleString('en-IN')}
                           </span>
-                          <span className="text-[10px] text-gray-400 line-through">
-                            ₹{product.originalPrice.toLocaleString('en-IN')}
-                          </span>
+                          {product.originalPrice > product.price && (
+                            <span className="text-[10px] text-gray-400 line-through">
+                              ₹{Number(product.originalPrice).toLocaleString('en-IN')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </Link>

@@ -1,0 +1,466 @@
+import { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../library/supabase';
+import {
+  ArrowLeft,
+  ShoppingBag,
+  Check,
+  Plus,
+  Minus,
+  Zap,
+  Shield,
+  Truck,
+  RefreshCw,
+  Star,
+  ChevronRight,
+  Heart,
+} from 'lucide-react';
+import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
+
+interface Variant {
+  name: string;
+  stock: number;
+}
+
+interface ColorOption {
+  name: string;
+  image: string;      // swatch thumbnail
+  images?: string[];  // per-color gallery
+}
+
+interface Product {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  price: number;
+  original_price?: number;
+  description?: string;
+  images?: string[];
+  stock: number;
+  badge?: string;
+  variants?: Variant[];
+  colors?: ColorOption[];
+}
+
+// Strip size constraints from CDN URLs so the product page shows full-resolution images
+function getHighResUrl(url: string): string {
+  if (!url) return '';
+  // Yonex / Magento: strip query params that force small sizes
+  if (url.includes('yonex.com') || url.includes('magento')) {
+    return url.split('?')[0];
+  }
+  // Amazon: remove resize directives like ._SL500_.
+  let cleaned = url.replace(/\._[a-zA-Z0-9_]+_\./g, '.');
+  // Shopify: remove _WIDTHxHEIGHT before extension
+  cleaned = cleaned.replace(/_[0-9]+x[0-9]+(?=\.[a-zA-Z]+$)/g, '');
+  return cleaned;
+}
+
+export default function ProductPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { addToCart } = useCart();
+  const { toggleWishlist, isInWishlist } = useWishlist();
+
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
+  const [selectedColor, setSelectedColor] = useState<ColorOption | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  useEffect(() => {
+    async function fetchProduct() {
+      if (!id) return;
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!error && data) {
+        setProduct(data);
+        if (data.variants && data.variants.length > 0) {
+          const firstInStock = data.variants.find((v: Variant) => Number(v.stock) > 0) || data.variants[0];
+          setSelectedVariant(firstInStock);
+        }
+        if (data.colors && data.colors.length > 0) {
+          setSelectedColor(data.colors[0]);
+        }
+      }
+      setLoading(false);
+    }
+    fetchProduct();
+  }, [id]);
+
+  // Reset image index when color changes
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [selectedColor]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Loading Product...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="font-bold text-gray-500">Product not found.</p>
+        <Link to="/" className="text-sm font-black text-red-600 uppercase hover:underline">Go Home</Link>
+      </div>
+    );
+  }
+
+  // Determine which images to show in the gallery
+  const colorImages = selectedColor?.images && selectedColor.images.length > 0
+    ? selectedColor.images
+    : null;
+  const galleryImages = colorImages || (product.images && product.images.length > 0 ? product.images : ['']);
+  const safeIndex = Math.min(activeImageIndex, galleryImages.length - 1);
+  const activeImageRaw = galleryImages[safeIndex] || '';
+  const activeImage = getHighResUrl(activeImageRaw);
+
+  const hasVariants = product.variants && product.variants.length > 0;
+  const hasColors = product.colors && product.colors.length > 0;
+
+  const currentStock = hasVariants
+    ? (selectedVariant ? Number(selectedVariant.stock) : 0)
+    : Number(product.stock || 0);
+  const isOutOfStock = currentStock <= 0;
+
+  const price = Number(product.price || 0);
+  const originalPrice = Number(product.original_price || 0);
+  const discount = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  const isLiked = isInWishlist(product.id);
+
+  const buildOrderItem = () => ({
+    id: product.id,
+    name: product.name,
+    brand: product.brand,
+    price: price,
+    original_price: originalPrice,
+    image: selectedColor?.image || galleryImages[0] || '',
+    images: galleryImages,
+    category: product.category,
+    stock: currentStock,
+    quantity,
+    selectedVariant: selectedVariant ? selectedVariant.name : null,
+    selectedColor: selectedColor ? selectedColor.name : null,
+  });
+
+  const handleAddToCart = () => {
+    if (isOutOfStock) return;
+    addToCart(buildOrderItem() as any);
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 2000);
+  };
+
+  const handleBuyNow = () => {
+    if (isOutOfStock) return;
+    navigate('/checkout', { state: { directCheckoutItem: buildOrderItem() } });
+  };
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-xs text-gray-400 font-medium mb-6">
+          <Link to="/" className="hover:text-black transition">Home</Link>
+          <ChevronRight className="w-3 h-3" />
+          <Link to={`/category/${product.category}`} className="hover:text-black transition capitalize">{product.category.replace(/-/g, ' ')}</Link>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-gray-700 font-bold line-clamp-1">{product.name}</span>
+        </nav>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 xl:gap-16 items-start">
+
+          {/* ── LEFT: GALLERY ── */}
+          <div className="space-y-3 lg:sticky lg:top-6">
+            {/* Main Image */}
+            <div className="relative aspect-square bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden group">
+              {isOutOfStock && (
+                <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-sm">
+                  Out of Stock
+                </span>
+              )}
+              {product.badge && !isOutOfStock && (
+                <span className="absolute top-4 left-4 z-10 bg-black text-white text-[10px] font-black uppercase px-3 py-1 rounded-full">
+                  {product.badge}
+                </span>
+              )}
+              {discount > 0 && (
+                <span className="absolute top-4 right-14 z-10 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded-full">
+                  -{discount}%
+                </span>
+              )}
+
+              {/* Wishlist */}
+              <button
+                onClick={() => toggleWishlist(product as any)}
+                className="absolute top-3.5 right-3.5 z-10 w-9 h-9 bg-white rounded-full shadow-sm border border-gray-200 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+              >
+                <Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+              </button>
+
+              <img
+                key={activeImage}
+                src={activeImage}
+                alt={product.name}
+                className={`w-full h-full object-contain p-8 transition-all duration-300 ${
+                  isOutOfStock ? 'opacity-50' : 'group-hover:scale-105'
+                }`}
+              />
+            </div>
+
+            {/* Thumbnail Strip */}
+            {galleryImages.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                {galleryImages.map((img, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveImageIndex(idx)}
+                    className={`shrink-0 w-16 h-16 rounded-xl border-2 p-1 bg-white transition-all ${
+                      safeIndex === idx
+                        ? 'border-black shadow-sm'
+                        : 'border-gray-200 opacity-60 hover:opacity-100 hover:border-gray-400'
+                    }`}
+                  >
+                    <img src={img} alt="" className="w-full h-full object-contain" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT: DETAILS ── */}
+          <div className="flex flex-col gap-5">
+            {/* Brand & Title */}
+            <div>
+              <Link
+                to={`/category/${product.category}`}
+                className="text-xs font-black text-red-600 uppercase tracking-widest hover:underline"
+              >
+                {product.brand}
+              </Link>
+              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1 leading-tight">
+                {product.name}
+              </h1>
+
+              {/* Rating placeholder */}
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map((s) => (
+                    <Star key={s} className={`w-4 h-4 ${ s <= 4 ? 'fill-amber-400 text-amber-400' : 'text-gray-200 fill-gray-200'}`} />
+                  ))}
+                </div>
+                <span className="text-xs font-bold text-gray-500">4.0 · Official Brand Certified</span>
+              </div>
+            </div>
+
+            {/* Price */}
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <span className="text-3xl font-black text-gray-900">₹{price.toLocaleString('en-IN')}</span>
+                {originalPrice > price && (
+                  <>
+                    <span className="text-base text-gray-400 line-through font-medium">₹{originalPrice.toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{discount}% OFF</span>
+                  </>
+                )}
+              </div>
+              {originalPrice > price && (
+                <p className="text-xs text-emerald-600 font-bold mt-1">
+                  You save ₹{(originalPrice - price).toLocaleString('en-IN')}
+                </p>
+              )}
+              <p className="text-[11px] text-gray-400 font-medium mt-1">Inclusive of all taxes</p>
+            </div>
+
+            {/* COLOR SELECTOR */}
+            {hasColors && (
+              <div>
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide mb-3">
+                  Color: <span className="text-red-600">{selectedColor?.name || 'Select'}</span>
+                </h3>
+                <div className="flex flex-wrap gap-3">
+                  {product.colors!.map((color, idx) => {
+                    const isSelected = selectedColor?.name === color.name;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedColor(color)}
+                        title={color.name}
+                        className={`flex flex-col items-center gap-1.5 group transition-all`}
+                      >
+                        <div className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all p-0.5 bg-white ${
+                          isSelected
+                            ? 'border-black shadow-md scale-105'
+                            : 'border-gray-200 hover:border-gray-400 hover:scale-102'
+                        }`}>
+                          {color.image ? (
+                            <img
+                              src={color.image}
+                              alt={color.name}
+                              className="w-full h-full object-cover rounded-lg"
+                            />
+                          ) : (
+                            <div className="w-full h-full rounded-lg bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                              <span className="text-[8px] font-black text-gray-500 uppercase">{color.name.slice(0,3)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <span className={`text-[9px] font-black uppercase tracking-wide ${
+                          isSelected ? 'text-black' : 'text-gray-500'
+                        }`}>
+                          {color.name.length > 8 ? color.name.slice(0,8) + '..' : color.name}
+                        </span>
+                        {isSelected && (
+                          <Check className="w-3 h-3 text-black stroke-[3]" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SIZE / VARIANT SELECTOR */}
+            {hasVariants && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">
+                    Size / Variant
+                  </h3>
+                  {selectedVariant && (
+                    <span className={`text-xs font-bold flex items-center gap-1 px-2 py-1 rounded-full ${
+                      Number(selectedVariant.stock) > 0
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-600'
+                    }`}>
+                      {Number(selectedVariant.stock) > 0 ? (
+                        <><Check className="w-3 h-3 stroke-[3]" /> {selectedVariant.stock} in stock</>
+                      ) : 'Out of Stock'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {product.variants!.map((variant, idx) => {
+                    const isAvailable = Number(variant.stock) > 0;
+                    const isSelected = selectedVariant?.name === variant.name;
+                    return (
+                      <button
+                        key={idx}
+                        disabled={!isAvailable}
+                        onClick={() => setSelectedVariant(variant)}
+                        className={`min-w-[3.5rem] px-4 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
+                          !isAvailable
+                            ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed line-through'
+                            : isSelected
+                            ? 'border-black bg-black text-white shadow-sm'
+                            : 'border-gray-200 text-gray-800 hover:border-gray-400 bg-white'
+                        }`}
+                      >
+                        {variant.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Quantity + Actions */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider">Quantity</h3>
+
+              {/* Qty Stepper */}
+              <div className="flex items-center border-2 border-gray-200 rounded-xl h-12 w-36 bg-white">
+                <button
+                  onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                  className="flex-1 h-full flex items-center justify-center hover:bg-gray-50 rounded-l-xl transition"
+                >
+                  <Minus className="w-4 h-4 stroke-[2.5] text-gray-700" />
+                </button>
+                <span className="w-12 text-center font-black text-gray-900 select-none text-base">{quantity}</span>
+                <button
+                  onClick={() => setQuantity(q => q < currentStock ? q + 1 : q)}
+                  disabled={quantity >= currentStock || isOutOfStock}
+                  className="flex-1 h-full flex items-center justify-center hover:bg-gray-50 rounded-r-xl transition disabled:opacity-40"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5] text-gray-700" />
+                </button>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleAddToCart}
+                  disabled={isOutOfStock}
+                  className={`flex-1 h-14 rounded-xl font-black text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                    isOutOfStock
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : addedToCart
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'bg-black text-white hover:bg-neutral-800 shadow-sm active:scale-[0.99]'
+                  }`}
+                >
+                  {addedToCart ? (
+                    <><Check className="w-5 h-5 stroke-[3]" /> Added!</>
+                  ) : (
+                    <><ShoppingBag className="w-5 h-5" /> {isOutOfStock ? 'Sold Out' : 'Add to Cart'}</>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleBuyNow}
+                  disabled={isOutOfStock}
+                  className={`flex-1 h-14 rounded-xl font-black text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                    isOutOfStock
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-red-600 text-white hover:bg-red-700 shadow-sm active:scale-[0.99]'
+                  }`}
+                >
+                  <Zap className="w-5 h-5 fill-white" /> Buy Now
+                </button>
+              </div>
+            </div>
+
+            {/* Delivery strip */}
+            <div className="grid grid-cols-3 gap-3 py-4 border-y border-gray-100">
+              <div className="flex flex-col items-center text-center gap-1.5">
+                <Truck className="w-5 h-5 text-gray-500" />
+                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide leading-tight">Free Delivery</span>
+              </div>
+              <div className="flex flex-col items-center text-center gap-1.5">
+                <Shield className="w-5 h-5 text-gray-500" />
+                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide leading-tight">100% Genuine</span>
+              </div>
+              <div className="flex flex-col items-center text-center gap-1.5">
+                <RefreshCw className="w-5 h-5 text-gray-500" />
+                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide leading-tight">Easy Returns</span>
+              </div>
+            </div>
+
+            {/* Description */}
+            {product.description && (
+              <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider mb-3">Description</h3>
+                <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{product.description}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
