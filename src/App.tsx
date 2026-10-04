@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
 import RetailHeader from './components/RetailHeader';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import Home from './pages/Home';
@@ -56,7 +57,11 @@ const router = createBrowserRouter([
   },
   { 
     path: '/admin', 
-    element: <Admin /> 
+    element: (
+      <ProtectedRoute>
+        <Admin />
+      </ProtectedRoute>
+    ) 
   },
 ]);
 

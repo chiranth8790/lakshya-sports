@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../library/supabase';
 import { 
   LayoutDashboard, 
   Package, 
@@ -22,6 +24,12 @@ type AdminTab = 'dashboard' | 'products' | 'merchandising' | 'orders' | 'coupons
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login', { replace: true });
+  };
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -59,7 +67,10 @@ export default function Admin() {
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-neutral-800">
-          <button className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-white transition">
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-white transition"
+          >
             <LogOut className="w-4 h-4" /> Sign Out
           </button>
         </div>
