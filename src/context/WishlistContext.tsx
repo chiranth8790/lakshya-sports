@@ -1,5 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Product } from '../data/products';
+
+// Minimal type for a product stored in the wishlist (matches Supabase schema)
+type Product = {
+  id: string;
+  name: string;
+  brand: string;
+  price: number;
+  original_price?: number;
+  category: string;
+  badge?: string;
+  images?: string[];
+  image?: string;
+  stock?: number;
+  [key: string]: any; // allow extra Supabase fields
+};
 
 interface WishlistContextType {
   wishlist: Product[];

@@ -1,17 +1,47 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Filter, SlidersHorizontal, ArrowLeft } from 'lucide-react';
-import { PRODUCTS } from '../data/products';
 import ProductCard from '../components/ProductCard';
+import { supabase } from '../library/supabase';
 
 export default function CategoryPage() {
   const { categoryName } = useParams<{ categoryName: string }>();
 
+  // New Supabase State
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Existing Filter State
   const [sortBy, setSortBy] = useState<'featured' | 'price-low' | 'price-high'>('featured');
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [maxPrice, setMaxPrice] = useState<number>(25000);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+// 1. Fetch live data from Supabase on mount
+  useEffect(() => {
+    async function fetchProducts() {
+      setLoading(true);
+      const { data, error } = await supabase.from('products').select('*');
+      
+      if (!error && data) {
+        // Map the Postgres string array and sanitize price data
+        const formattedData = data.map((item) => ({
+          ...item,
+          // Fallback to 0 if price is missing to prevent .toLocaleString() crashes
+          price: item.price || 0,
+          originalPrice: item.original_price || 0,
+          original_price: item.original_price || 0,
+          // Extract image with fallbacks to avoid overriding valid images or colors
+          image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
+        }));
+        setAllProducts(formattedData);
+      }
+      setLoading(false);
+    }
+    fetchProducts();
+  }, []);
+
+  // 2. Reset filters when changing category categories
   useEffect(() => {
     setSortBy('featured');
     setSelectedBrands([]);
@@ -19,7 +49,8 @@ export default function CategoryPage() {
     setMobileFilterOpen(false);
   }, [categoryName]);
 
-  const baseCategoryProducts = PRODUCTS.filter(
+  // 3. Use the fetched `allProducts` instead of the hardcoded `PRODUCTS`
+  const baseCategoryProducts = allProducts.filter(
     (p) => p.category.toLowerCase() === (categoryName || '').toLowerCase()
   );
 
@@ -31,12 +62,13 @@ export default function CategoryPage() {
     );
   };
 
-  const filteredProducts = baseCategoryProducts
+ const filteredProducts = baseCategoryProducts
     .filter((product) => {
-      const matchesBrand =
-        selectedBrands.length === 0 || selectedBrands.includes(product.brand);
+      const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(product.brand);
       const matchesPrice = product.price <= maxPrice;
-      return matchesBrand && matchesPrice;
+      const isInStock = product.stock > 0; // NEW: Check inventory
+      
+      return matchesBrand && matchesPrice && isInStock;
     })
     .sort((a, b) => {
       if (sortBy === 'price-low') return a.price - b.price;
@@ -45,6 +77,17 @@ export default function CategoryPage() {
     });
 
   const formattedTitle = (categoryName || 'Equipment').replace(/-/g, ' ');
+
+  // Show a simple loading state while data fetches
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <p className="text-sm font-bold uppercase text-gray-500 tracking-widest animate-pulse">
+          Loading {formattedTitle}...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 py-8">
