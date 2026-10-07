@@ -170,6 +170,9 @@ export default function Home() {
                     src={slide.imageUrl}
                     alt={slide.title || 'Promotional Banner'}
                     className="w-full h-auto max-h-[550px] object-contain sm:object-cover sm:max-h-[500px] mx-auto group-hover:scale-[1.005] transition-transform duration-300"
+                    loading={index === 0 ? "eager" : "lazy"}
+                    fetchPriority={index === 0 ? "high" : "auto"}
+                    decoding={index === 0 ? "sync" : "async"}
                   />
                 </Link>
               ) : (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../library/supabase';
@@ -28,6 +28,16 @@ interface OrderItem {
 export default function CheckoutPage() {
   const location = useLocation();
   const { cart, clearCart } = useCart() as any;
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   // 1. Resolve Checkout Source: Buy Now single-item state takes priority over persistent cart
   const directItem: OrderItem | undefined = location.state?.directCheckoutItem;
@@ -70,53 +80,114 @@ export default function CheckoutPage() {
 
     const generatedOrderId = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    try {
-      // 2. Persist to Supabase 'orders' table
-      const { error: orderError } = await supabase
-        .from('orders')
-        .insert([
-          {
-            order_id: generatedOrderId,
-            customer_name: formData.fullName,
-            customer_email: formData.email,
-            customer_phone: formData.phone,
-            shipping_address: {
-              street: formData.address,
-              city: formData.city,
-              state: formData.state,
-              pincode: formData.pincode,
-            },
-            items: checkoutItems,
-            subtotal,
-            shipping_fee: shippingFee,
-            total_amount: grandTotal,
-            payment_method: paymentMethod,
-            status: 'Processing',
-            created_at: new Date().toISOString()
+    const finalizeOrder = async (paymentId?: string) => {
+      try {
+        const { error: orderError } = await supabase
+          .from('orders')
+          .insert([
+            {
+              order_id: generatedOrderId,
+              customer_name: formData.fullName,
+              customer_email: formData.email,
+              customer_phone: formData.phone,
+              shipping_address: {
+                street: formData.address,
+                city: formData.city,
+                state: formData.state,
+                pincode: formData.pincode,
+              },
+              items: checkoutItems,
+              subtotal,
+              shipping_fee: shippingFee,
+              total_amount: grandTotal,
+              payment_method: paymentMethod,
+              status: paymentId ? 'Paid' : 'Processing',
+              created_at: new Date().toISOString()
+            }
+          ])
+          .select()
+          .single();
+
+        if (orderError) {
+          throw orderError;
+        }
+
+        if (!isDirectCheckout && typeof clearCart === 'function') {
+          clearCart();
+        }
+
+        setPlacedOrderId(generatedOrderId);
+        setOrderComplete(true);
+      } catch (err: any) {
+        console.error('Checkout error:', err);
+        alert('Failed to place order. Please try again or contact support.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    if (paymentMethod === 'upi' || paymentMethod === 'card') {
+      try {
+        const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', {
+          body: { amount: grandTotal * 100 }
+        });
+        
+        if (orderError) throw orderError;
+        if (orderData.error) throw new Error(orderData.error);
+        
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: 'Lakshya Sports',
+          description: 'Secure Checkout',
+          order_id: orderData.id,
+          handler: async function (response: any) {
+             try {
+                 const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-razorpay-payment', {
+                    body: {
+                      razorpay_order_id: response.razorpay_order_id,
+                      razorpay_payment_id: response.razorpay_payment_id,
+                      razorpay_signature: response.razorpay_signature
+                    }
+                 });
+                 
+                 if (verifyError || verifyData.error || !verifyData.success) {
+                     alert("Payment verification failed");
+                     setIsSubmitting(false);
+                     return;
+                 }
+                 
+                 await finalizeOrder(response.razorpay_payment_id);
+             } catch (e) {
+                 console.error(e);
+                 alert("Payment verification failed");
+                 setIsSubmitting(false);
+             }
+          },
+          prefill: {
+            name: formData.fullName,
+            email: formData.email,
+            contact: formData.phone
+          },
+          theme: {
+            color: '#000000'
           }
-        ])
-        .select()
-        .single();
-
-      if (orderError) {
-        console.warn('Supabase order insert notice:', orderError.message);
-        // Fall through gracefully so the user experience is not blocked if table schema differs
+        };
+        
+        const rzp1 = new (window as any).Razorpay(options);
+        rzp1.on('payment.failed', function (response: any) {
+           alert("Payment failed: " + response.error.description);
+           setIsSubmitting(false);
+        });
+        rzp1.open();
+      } catch (err: any) {
+        console.error('Razorpay initialization error:', err);
+        alert('Failed to initialize payment gateway. Please try again.');
+        setIsSubmitting(false);
       }
-
-      // 3. Clear cart only if this was NOT a direct "Buy Now" flow
-      if (!isDirectCheckout && typeof clearCart === 'function') {
-        clearCart();
-      }
-
-      setPlacedOrderId(generatedOrderId);
-      setOrderComplete(true);
-    } catch (err) {
-      console.error('Checkout error:', err);
-      // Fallback for offline or local preview environments
-      setPlacedOrderId(generatedOrderId);
-      setOrderComplete(true);
-    } finally {
-      setIsSubmitting(false);
+    } else {
+       await finalizeOrder();
     }
   };
 

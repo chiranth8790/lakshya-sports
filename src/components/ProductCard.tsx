@@ -148,6 +148,7 @@ export default function ProductCard({ product }: { product: any }) {
               isOutOfStock ? 'opacity-70' : 'group-hover:scale-105'
             }`}
             loading="lazy"
+            decoding="async"
           />
         </div>
 

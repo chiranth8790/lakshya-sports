@@ -242,6 +242,9 @@ export default function ProductPage() {
                 className={`w-full h-full object-contain p-8 transition-all duration-300 ${
                   isOutOfStock ? 'opacity-50' : 'group-hover:scale-105'
                 }`}
+                loading="eager"
+                fetchPriority="high"
+                decoding="sync"
               />
             </div>
 
@@ -258,7 +261,7 @@ export default function ProductPage() {
                         : 'border-gray-200 opacity-60 hover:opacity-100 hover:border-gray-400'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-contain" />
+                    <img src={img} alt="" className="w-full h-full object-contain" loading="lazy" decoding="async" />
                   </button>
                 ))}
               </div>
