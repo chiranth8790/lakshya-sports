@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Truck, RotateCcw, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import ProductCard from '../components/ProductCard';
+import { ShieldCheck, Truck, RotateCcw, ArrowRight, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { supabase } from '../library/supabase';
+import ProductCarousel from '../components/ProductCarousel';
 
 const DEFAULT_SLIDES = [
   {
@@ -34,68 +34,90 @@ const DEFAULT_SLIDES = [
   },
 ];
 
+const getInitialSlides = (): any[] => {
+  try {
+    const stored = localStorage.getItem('lakshya_hero_banners');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        const active = parsed.filter((b: any) => b.is_active ?? true);
+        if (active.length > 0) {
+          return active.map((b: any) => ({
+            id: String(b.id),
+            title: b.title || 'Special Promotion',
+            subtitle: b.subtitle || '',
+            tag: b.tag || '',
+            ctaLink: b.cta_link || b.ctaLink || '/category/rackets',
+            ctaText: b.cta_text || b.ctaText || 'Shop Now',
+            bg: b.bg || 'from-black via-zinc-900 to-neutral-900',
+            imageUrl: b.image_url || b.imageUrl,
+          }));
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+};
+
 export default function Home() {
   // Slideshow State
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [slides, setSlides] = useState<any[]>(DEFAULT_SLIDES);
+  const [slides, setSlides] = useState<any[]>(getInitialSlides);
+  const [bannersLoading, setBannersLoading] = useState(() => getInitialSlides().length === 0);
 
   // Supabase State
   const [newArrivals, setNewArrivals] = useState<any[]>([]);
   const [recommendedGear, setRecommendedGear] = useState<any[]>([]);
+  const [onSaleGear, setOnSaleGear] = useState<any[]>([]);
 
-  // Fetch Banners from LocalStorage & Supabase
+  // Fetch Banners from Supabase (Source of Truth) & Sync Local Cache
   useEffect(() => {
     async function fetchBanners() {
-      let customBanners: any[] = [];
-
-      // 1. Check LocalStorage
-      try {
-        const stored = localStorage.getItem('lakshya_hero_banners');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          customBanners = parsed.filter((b: any) => b.is_active);
-        }
-      } catch {
-        // ignore
-      }
-
-      // 2. Check Supabase
       try {
         const { data, error } = await supabase
           .from('hero_banners')
           .select('*')
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
-          const mapped = data.map((b: any) => ({
+          const formatted = data.map((b: any) => ({
             id: String(b.id),
-            title: b.title || '',
+            title: b.title || 'Special Promotion',
+            subtitle: b.subtitle || '',
+            tag: b.tag || '',
             ctaLink: b.cta_link || '/category/rackets',
+            ctaText: b.cta_text || 'Shop Now',
+            bg: b.bg || 'from-black via-zinc-900 to-neutral-900',
             imageUrl: b.image_url,
           }));
-          // Merge with unique IDs
-          const existingIds = new Set(customBanners.map(b => b.id));
-          mapped.forEach(b => {
-            if (!existingIds.has(b.id)) customBanners.push(b);
-          });
+          setSlides(formatted);
+          try {
+            localStorage.setItem('lakshya_hero_banners', JSON.stringify(data));
+          } catch {
+            // ignore
+          }
+          setBannersLoading(false);
+          return;
+        } else if (!error && data && data.length === 0) {
+          // If no custom banners are active in DB, fallback to default slides
+          setSlides(DEFAULT_SLIDES);
+          try {
+            localStorage.removeItem('lakshya_hero_banners');
+          } catch {
+            // ignore
+          }
+          setBannersLoading(false);
+          return;
         }
       } catch {
-        // Use local or default slides if table not present
+        // DB error or offline: fallback to cached slides or defaults
       }
 
-      if (customBanners.length > 0) {
-        const formatted = customBanners.map(b => ({
-          id: b.id,
-          title: b.title || 'Special Promotion',
-          subtitle: b.subtitle || '',
-          tag: b.tag || '',
-          ctaLink: b.cta_link || b.ctaLink || '/category/rackets',
-          ctaText: b.cta_text || b.ctaText || 'Shop Now',
-          bg: b.bg || 'from-black via-zinc-900 to-neutral-900',
-          imageUrl: b.image_url || b.imageUrl,
-        }));
-        setSlides(formatted);
-      }
+      setSlides((prev) => (prev.length > 0 ? prev : DEFAULT_SLIDES));
+      setBannersLoading(false);
     }
 
     fetchBanners();
@@ -110,129 +132,183 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [slides.length]);
 
+  // Keep current slide within bounds if slide count changes
+  useEffect(() => {
+    if (currentSlide >= slides.length && slides.length > 0) {
+      setCurrentSlide(0);
+    }
+  }, [slides.length, currentSlide]);
+
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % slides.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
 
-  // Fetch Recommended Products from Supabase (any in-stock product, limit 4)
+  // Touch handlers for swipe
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe) {
+      nextSlide();
+    } else if (isRightSwipe) {
+      prevSlide();
+    }
+  };
+
+  const formatProduct = (item: any) => ({
+    ...item,
+    price: item.price || 0,
+    originalPrice: item.original_price || 0,
+    image: item.images && item.images.length > 0 ? item.images[0] : '',
+  });
+
+  // Fetch Recommended Products
   useEffect(() => {
     const fetchRecommended = async () => {
       const { data } = await supabase
         .from('products')
         .select('*')
         .gt('stock', 0)
-        .limit(4);
+        .limit(20);
 
-      if (data) {
-        const formatted = data.map((item) => ({
-          ...item,
-          price: item.price || 0,
-          originalPrice: item.original_price || 0,
-          image: item.images && item.images.length > 0 ? item.images[0] : '',
-        }));
-        setRecommendedGear(formatted);
-      }
+      if (data) setRecommendedGear(data.map(formatProduct));
     };
     fetchRecommended();
   }, []);
 
-  // Fetch New Arrivals from Supabase
+  // Fetch New Arrivals
   useEffect(() => {
     const fetchNewArrivals = async () => {
       const { data } = await supabase
         .from('products')
         .select('*')
         .contains('collections', ['new_arrivals'])
-        .limit(4); // Shows 4 products
+        .limit(20);
         
-      if (data) setNewArrivals(data);
+      if (data) setNewArrivals(data.map(formatProduct));
     };
-    
     fetchNewArrivals();
+  }, []);
+
+  // Fetch On Sale
+  useEffect(() => {
+    const fetchOnSale = async () => {
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .contains('collections', ['sale'])
+        .limit(20);
+        
+      if (data) setOnSaleGear(data.map(formatProduct));
+    };
+    fetchOnSale();
   }, []);
 
   return (
     <main className="min-h-screen bg-gray-100 pb-16">
       {/* Sliding Hero Window */}
-      <section className="relative overflow-hidden bg-black text-white w-full">
-        <div
-          className="flex transition-transform duration-700 ease-out w-full"
-          style={{ transform: `translateX(-${currentSlide * 100}%)` }}
-        >
-          {slides.map((slide, index) => (
-            <div
-              key={slide.id || index}
-              className="w-full shrink-0 relative flex items-center justify-center bg-black overflow-hidden"
-            >
-              {/* If Custom Graphic Banner Image exists: Render full image preserving aspect ratio on mobile */}
-              {slide.imageUrl ? (
-                <Link to={slide.ctaLink} className="w-full block relative group bg-black">
-                  <img
-                    src={slide.imageUrl}
-                    alt={slide.title || 'Promotional Banner'}
-                    className="w-full h-auto max-h-[550px] object-contain sm:object-cover sm:max-h-[500px] mx-auto group-hover:scale-[1.005] transition-transform duration-300"
-                    loading={index === 0 ? "eager" : "lazy"}
-                    fetchPriority={index === 0 ? "high" : "auto"}
-                    decoding={index === 0 ? "sync" : "async"}
-                  />
-                </Link>
-              ) : (
-                /* Default Text Slide */
-                <div className={`w-full py-16 sm:py-24 px-4 flex flex-col items-center justify-center text-center bg-gradient-to-r ${slide.bg || 'from-black to-zinc-900'} min-h-[300px] sm:min-h-[420px]`}>
-                  {slide.tag && (
-                    <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3 shadow-md">
-                      {slide.tag}
-                    </span>
-                  )}
-                  <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight max-w-3xl leading-none drop-shadow-sm">
-                    {slide.title}
-                  </h1>
-                  {slide.subtitle && (
-                    <p className="mt-4 text-xs sm:text-sm text-gray-200 max-w-xl font-medium">
-                      {slide.subtitle}
-                    </p>
-                  )}
-                  <div className="mt-6">
-                    <Link
-                      to={slide.ctaLink}
-                      className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition inline-flex items-center gap-1.5 shadow-md active:scale-95"
-                    >
-                      {slide.ctaText || 'Shop Now'} <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {slides.length > 1 && (
+      <section 
+        className="relative overflow-hidden bg-black text-white w-full touch-pan-y min-h-[300px] sm:min-h-[420px]"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {bannersLoading && slides.length === 0 ? (
+          <div className="w-full min-h-[300px] sm:min-h-[420px] bg-zinc-950 flex items-center justify-center animate-pulse">
+            <div className="w-8 h-8 border-2 border-red-600/30 border-t-red-600 rounded-full animate-spin" />
+          </div>
+        ) : (
           <>
-            <button
-              onClick={prevSlide}
-              className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/40 hover:bg-black/70 rounded-full text-white transition z-20"
-              aria-label="Previous Slide"
+            <div
+              className="flex transition-transform duration-700 ease-out w-full"
+              style={{ transform: `translateX(-${currentSlide * 100}%)` }}
             >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={nextSlide}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/40 hover:bg-black/70 rounded-full text-white transition z-20"
-              aria-label="Next Slide"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-              {slides.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentSlide(i)}
-                  className={`h-1.5 rounded-full transition-all ${
-                    currentSlide === i ? 'w-6 bg-red-600' : 'w-2 bg-white/50'
-                  }`}
-                />
+              {slides.map((slide, index) => (
+                <div
+                  key={slide.id || index}
+                  className="w-full shrink-0 relative flex items-center justify-center bg-black overflow-hidden"
+                >
+                  {slide.imageUrl ? (
+                    <Link to={slide.ctaLink} className="w-full block relative group bg-black">
+                      <img
+                        src={slide.imageUrl}
+                        alt={slide.title || 'Promotional Banner'}
+                        className="w-full h-auto max-h-[550px] object-contain sm:object-cover sm:max-h-[500px] mx-auto group-hover:scale-[1.005] transition-transform duration-300"
+                        loading={index === 0 ? "eager" : "lazy"}
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        decoding={index === 0 ? "sync" : "async"}
+                      />
+                    </Link>
+                  ) : (
+                    <div className={`w-full py-16 sm:py-24 px-4 flex flex-col items-center justify-center text-center bg-gradient-to-r ${slide.bg || 'from-black to-zinc-900'} min-h-[300px] sm:min-h-[420px]`}>
+                      {slide.tag && (
+                        <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3 shadow-md">
+                          {slide.tag}
+                        </span>
+                      )}
+                      <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight max-w-3xl leading-none drop-shadow-sm">
+                        {slide.title}
+                      </h1>
+                      {slide.subtitle && (
+                        <p className="mt-4 text-xs sm:text-sm text-gray-200 max-w-xl font-medium">
+                          {slide.subtitle}
+                        </p>
+                      )}
+                      <div className="mt-6">
+                        <Link
+                          to={slide.ctaLink}
+                          className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition inline-flex items-center gap-1.5 shadow-md active:scale-95"
+                        >
+                          {slide.ctaText || 'Shop Now'} <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
+
+            {slides.length > 1 && (
+              <>
+                <button
+                  onClick={prevSlide}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/40 hover:bg-black/70 rounded-full text-white transition z-20"
+                  aria-label="Previous Slide"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={nextSlide}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/40 hover:bg-black/70 rounded-full text-white transition z-20"
+                  aria-label="Next Slide"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
+                  {slides.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentSlide(i)}
+                      className={`h-1.5 rounded-full transition-all ${
+                        currentSlide === i ? 'w-6 bg-red-600' : 'w-2 bg-white/50'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
       </section>
@@ -252,8 +328,23 @@ export default function Home() {
         </div>
       </section>
 
+      {/* On Sale Products */}
+      {onSaleGear.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 mt-10">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-red-600 flex items-center gap-2">
+                <Tag className="w-6 h-6" /> Flash Sale
+              </h2>
+              <p className="text-xs text-gray-500">Massive discounts on premium gear</p>
+            </div>
+          </div>
+          <ProductCarousel products={onSaleGear} />
+        </section>
+      )}
+
       {/* Recommended Products */}
-      <section className="max-w-7xl mx-auto px-4 mt-10">
+      <section className="max-w-7xl mx-auto px-4 mt-14">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-gray-900">
@@ -268,31 +359,23 @@ export default function Home() {
             View All <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {recommendedGear.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        <ProductCarousel products={recommendedGear} />
       </section>
 
       {/* New Arrivals */}
-      <section className="max-w-7xl mx-auto px-4 mt-14">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-gray-900">
-              New Arrivals
-            </h2>
-            <p className="text-xs text-gray-500">Latest sports gear just stocked</p>
+      {newArrivals.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 mt-14 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-gray-900">
+                New Arrivals
+              </h2>
+              <p className="text-xs text-gray-500">Latest sports gear just stocked</p>
+            </div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {newArrivals.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
+          <ProductCarousel products={newArrivals} />
+        </section>
+      )}
     </main>
   );
 }

@@ -13,9 +13,17 @@ import {
   Star,
   ChevronRight,
   Heart,
+  Ruler,
+  ZapIcon,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
+import SEO from '../components/SEO';
+import WhatsAppWidget from '../components/WhatsAppWidget';
+import SizeGuideModal from '../components/SizeGuideModal';
+import ProductReviews from '../components/ProductReviews';
 
 interface Variant {
   name: string;
@@ -57,6 +65,34 @@ function getHighResUrl(url: string): string {
   return cleaned;
 }
 
+const STRING_OPTIONS = [
+  { name: 'Unstrung (Frame Only)', price: 0, tag: 'Original Factory Unstrung' },
+  { name: 'Yonex BG 65', price: 550, tag: 'Maximum Durability • 0.70mm' },
+  { name: 'Yonex BG 65 Titanium', price: 600, tag: 'Hard Feeling & Sharp Sound • 0.70mm' },
+  { name: 'Yonex BG 66 Ultimax', price: 750, tag: 'High Repulsion & Control • 0.65mm' },
+  { name: 'Yonex BG 80 Power', price: 750, tag: 'Hard Smash & High Tension • 0.68mm' },
+  { name: 'Yonex Nanogy 95', price: 750, tag: 'CS Carbon Nanotube Compound • 0.69mm' },
+  { name: 'Yonex Aerobite', price: 1000, tag: 'Hybrid High Spin & Slicing Control' },
+];
+
+const TENSION_OPTIONS = [
+  'Factory Standard (~22 lbs)',
+  '24 lbs (Beginner / Intermediate)',
+  '26 lbs (Advanced Club Player - Recommended)',
+  '28 lbs (Tournament / Pro)',
+  '30 lbs (Custom Elite)',
+];
+
+const GRIP_OPTIONS = [
+  { name: 'No Extra Grip', price: 0, tag: 'Standard Factory Grip' },
+  { name: 'Yonex Super Grap (AC102EX)', price: 120, tag: 'Tacky Feel • #1 Worldwide' },
+  { name: 'Yonex Towel Grip (AC402EX)', price: 150, tag: '100% Pure Cotton • High Sweat Absorb' },
+  { name: 'Yonex Wave Grap (AC104EX)', price: 160, tag: 'Ribbed Contour Center • Non-Slip' },
+  { name: 'Yonex Dry Super Grap (AC140EX)', price: 180, tag: 'Dry Breathable Feel • Quick Dry' },
+  { name: 'Yonex Clean Grap (AC147EX)', price: 200, tag: 'Odourless Anti-Bacterial Treatment' },
+  { name: 'Yonex Synthetic Replacement Grip (AC201)', price: 250, tag: 'Cushioned PU Replacement Base Grip' },
+];
+
 export default function ProductPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -70,8 +106,25 @@ export default function ProductPage() {
   const [selectedColor, setSelectedColor] = useState<ColorOption | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
+  
+  // Custom Racket Stringing & Grip State
+  const [selectedString, setSelectedString] = useState(STRING_OPTIONS[0]);
+  const [selectedTension, setSelectedTension] = useState(TENSION_OPTIONS[2]);
+  const [selectedGrip, setSelectedGrip] = useState(GRIP_OPTIONS[0]);
+
+  // Accordion Expand/Collapse States (click to expand)
+  const [stringingExpanded, setStringingExpanded] = useState(false);
+  const [gripExpanded, setGripExpanded] = useState(false);
+
+  // Size Guide Modal
+  const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
+
+  // Touch handlers for swipe
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     async function fetchProduct() {
       if (!id) return;
       setLoading(true);
@@ -161,9 +214,42 @@ export default function ProductPage() {
   const activeImageRaw = galleryImages[safeIndex] || '';
   const activeImage = getHighResUrl(activeImageRaw);
 
-  const price = Number(product.price || 0);
+  const minSwipeDistance = 50;
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe) {
+      setActiveImageIndex((prev) => (prev + 1) % galleryImages.length);
+    } else if (isRightSwipe) {
+      setActiveImageIndex((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
+    }
+  };
+
+  const isRacket = Boolean(
+    product && (
+      product.category?.toLowerCase().includes('racket') ||
+      product.name?.toLowerCase().includes('racket') ||
+      product.name?.toLowerCase().includes('nanoflare') ||
+      product.name?.toLowerCase().includes('astrox') ||
+      product.name?.toLowerCase().includes('arcsaber')
+    )
+  );
+
+  const stringCharge = isRacket ? selectedString.price : 0;
+  const gripCharge = isRacket ? selectedGrip.price : 0;
+  const basePrice = Number(product.price || 0);
+  const price = basePrice + stringCharge + gripCharge;
   const originalPrice = Number(product.original_price || 0);
-  const discount = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  const discount = originalPrice > basePrice ? Math.round(((originalPrice - basePrice) / originalPrice) * 100) : 0;
   const isLiked = isInWishlist(product.id);
 
   const buildOrderItem = () => ({
@@ -179,6 +265,8 @@ export default function ProductPage() {
     quantity,
     selectedVariant: selectedVariant ? selectedVariant.name : null,
     selectedColor: selectedColor ? selectedColor.name : null,
+    selectedString: isRacket && selectedString.price > 0 ? `${selectedString.name} @ ${selectedTension}` : null,
+    selectedGrip: isRacket && selectedGrip.price > 0 ? selectedGrip.name : null,
   });
 
   const handleAddToCart = () => {
@@ -195,6 +283,11 @@ export default function ProductPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <SEO 
+        title={`${product.name} - ${product.brand}`} 
+        description={product.description || `Buy ${product.name} online at Lakshya Sports. ₹${price.toLocaleString('en-IN')}`}
+        image={galleryImages[0] || ''}
+      />
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-xs text-gray-400 font-medium mb-6">
@@ -210,7 +303,12 @@ export default function ProductPage() {
           {/* ── LEFT: GALLERY ── */}
           <div className="space-y-3 lg:sticky lg:top-6">
             {/* Main Image */}
-            <div className="relative aspect-square bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden group">
+            <div 
+              className="relative aspect-square bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden group touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               {isOutOfStock && (
                 <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-sm">
                   Out of Stock
@@ -355,14 +453,14 @@ export default function ProductPage() {
             )}
 
             {/* SIZE / VARIANT SELECTOR */}
-            {hasVariants && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
                   <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">
-                    Size / Variant
+                    {hasVariants ? 'Size / Variant' : 'Standard Fit'}
                   </h3>
                   {selectedVariant && (
-                    <span className={`text-xs font-bold flex items-center gap-1 px-2 py-1 rounded-full ${
+                    <span className={`text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-full ${
                       Number(selectedVariant.stock) > 0
                         ? 'bg-green-50 text-green-700'
                         : 'bg-red-50 text-red-600'
@@ -373,6 +471,17 @@ export default function ProductPage() {
                     </span>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSizeGuideOpen(true)}
+                  className="text-xs font-bold text-red-600 hover:text-black flex items-center gap-1 underline transition"
+                >
+                  <Ruler className="w-3.5 h-3.5" /> Size Guide
+                </button>
+              </div>
+
+              {hasVariants && (
                 <div className="flex flex-wrap gap-2">
                   {displayVariants.map((variant, idx) => {
                     const isAvailable = Number(variant.stock) > 0;
@@ -397,6 +506,221 @@ export default function ProductPage() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* EXPANDABLE ACCORDIONS: 1. STRINGING (TOP) & 2. YONEX GRIPPER (BELOW) */}
+            {isRacket && (
+              <div className="space-y-3 pt-1">
+                {/* 1. TOURNAMENT STRINGING (EXPANDABLE) */}
+                <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden shadow-sm transition-all">
+                  {/* Header / Click to Expand */}
+                  <button
+                    type="button"
+                    onClick={() => setStringingExpanded(!stringingExpanded)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-neutral-900/80 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-600/40 flex items-center justify-center shrink-0">
+                        <ZapIcon className="w-4 h-4 text-red-500 fill-red-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                            1. Tournament Stringing
+                          </h4>
+                          <span className="text-[10px] text-neutral-400 font-medium hidden sm:inline">• Click to {stringingExpanded ? 'Collapse' : 'Customize'}</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                          {selectedString.price > 0 ? (
+                            <span className="text-red-400 font-semibold">{selectedString.name} @ {selectedTension.split(' ')[0]} lbs</span>
+                          ) : (
+                            <span>Unstrung Frame Only</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg ${
+                        selectedString.price > 0 
+                          ? 'bg-red-950/80 text-red-400 border border-red-800/60' 
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {selectedString.price > 0 ? `+₹${selectedString.price}` : '₹0'}
+                      </span>
+                      {stringingExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-neutral-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-neutral-400" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded Content */}
+                  {stringingExpanded && (
+                    <div className="p-4 border-t border-neutral-800/80 bg-neutral-900/50 space-y-4 animate-in fade-in duration-200">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                          Select Badminton String:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {STRING_OPTIONS.map((str) => {
+                            const isSelected = selectedString.name === str.name;
+                            return (
+                              <button
+                                key={str.name}
+                                type="button"
+                                onClick={() => setSelectedString(str)}
+                                className={`p-3 rounded-xl border text-left flex items-start justify-between gap-2 transition ${
+                                  isSelected
+                                    ? 'border-red-600 bg-red-950/40 text-white shadow-sm ring-1 ring-red-600'
+                                    : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700 text-neutral-300'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold leading-tight">{str.name}</p>
+                                  <p className="text-[10px] text-neutral-400 mt-0.5">{str.tag}</p>
+                                </div>
+                                <span className={`text-xs font-mono font-black shrink-0 ${isSelected ? 'text-red-400' : 'text-neutral-400'}`}>
+                                  {str.price > 0 ? `+₹${str.price}` : 'Free'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Tension selector (if strung) */}
+                      {selectedString.price > 0 && (
+                        <div className="pt-2 border-t border-neutral-800/60">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                            Select Tension (lbs) • Strung Electronically:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {TENSION_OPTIONS.map((ten) => {
+                              const isSelected = selectedTension === ten;
+                              return (
+                                <button
+                                  key={ten}
+                                  type="button"
+                                  onClick={() => setSelectedTension(ten)}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${
+                                    isSelected
+                                      ? 'bg-red-600 text-white shadow-sm'
+                                      : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'
+                                  }`}
+                                >
+                                  {ten}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setStringingExpanded(false)}
+                          className="text-[11px] font-black uppercase tracking-wider bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-1.5 rounded-lg transition"
+                        >
+                          Confirm String
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. YONEX GRIPPER SECTION (BELOW STRINGING, EXPANDABLE) */}
+                <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden shadow-sm transition-all">
+                  {/* Header / Click to Expand */}
+                  <button
+                    type="button"
+                    onClick={() => setGripExpanded(!gripExpanded)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-neutral-900/80 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                        <span className="text-amber-400 font-black text-xs">GR</span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                            2. Add Yonex Gripper
+                          </h4>
+                          <span className="text-[10px] text-neutral-400 font-medium hidden sm:inline">• Click to {gripExpanded ? 'Collapse' : 'Customize'}</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                          {selectedGrip.price > 0 ? (
+                            <span className="text-amber-400 font-semibold">{selectedGrip.name}</span>
+                          ) : (
+                            <span>No Extra Grip Selected</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg ${
+                        selectedGrip.price > 0 
+                          ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60' 
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {selectedGrip.price > 0 ? `+₹${selectedGrip.price}` : 'None'}
+                      </span>
+                      {gripExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-neutral-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-neutral-400" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded Content */}
+                  {gripExpanded && (
+                    <div className="p-4 border-t border-neutral-800/80 bg-neutral-900/50 space-y-3 animate-in fade-in duration-200">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                        Official Yonex Grips (₹120 – ₹250):
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {GRIP_OPTIONS.map((grp) => {
+                          const isSelected = selectedGrip.name === grp.name;
+                          return (
+                            <button
+                              key={grp.name}
+                              type="button"
+                              onClick={() => setSelectedGrip(grp)}
+                              className={`p-3 rounded-xl border text-left flex items-start justify-between gap-2 transition ${
+                                isSelected
+                                  ? 'border-amber-500 bg-amber-950/40 text-white shadow-sm ring-1 ring-amber-500'
+                                  : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700 text-neutral-300'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold leading-tight">{grp.name}</p>
+                                <p className="text-[10px] text-neutral-400 mt-0.5">{grp.tag}</p>
+                              </div>
+                              <span className={`text-xs font-mono font-black shrink-0 ${isSelected ? 'text-amber-400' : 'text-neutral-400'}`}>
+                                {grp.price > 0 ? `+₹${grp.price}` : 'None'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setGripExpanded(false)}
+                          className="text-[11px] font-black uppercase tracking-wider bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-1.5 rounded-lg transition"
+                        >
+                          Confirm Grip
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -455,6 +779,12 @@ export default function ProductPage() {
                   <Zap className="w-5 h-5 fill-white shrink-0" /> <span className="truncate">Buy Now</span>
                 </button>
               </div>
+
+              {/* WhatsApp DM Button */}
+              <WhatsAppWidget 
+                variant="inline"
+                message={`Hi Lakshya Sports, I am looking at ${product.name} on your website. Can you help me with custom specs/other options?`}
+              />
             </div>
 
             {/* Delivery strip */}
@@ -485,7 +815,17 @@ export default function ProductPage() {
             )}
           </div>
         </div>
+
+        {/* Verified Customer Reviews */}
+        <ProductReviews productName={product.name} />
       </div>
+
+      {/* Equipment Size Guide Modal */}
+      <SizeGuideModal 
+        category={product.category}
+        isOpen={sizeGuideOpen}
+        onClose={() => setSizeGuideOpen(false)}
+      />
     </div>
   );
 }

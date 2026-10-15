@@ -51,6 +51,39 @@ export default function CartPage() {
           </div>
         </div>
 
+        {/* Free Shipping Progress Bar */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 mb-6 shadow-xs">
+          {subtotal >= 1999 ? (
+            <div className="flex items-center gap-3 text-emerald-700">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                <Truck className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider">
+                  🎉 Congratulations! You qualify for Free Express Shipping!
+                </p>
+                <p className="text-[11px] text-emerald-600">No extra courier fee will be added at checkout.</p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className="font-bold text-gray-800 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-red-600" />
+                  Add <strong className="text-red-600">₹{(1999 - subtotal).toLocaleString('en-IN')}</strong> more for <span className="uppercase font-black">Free Shipping</span>
+                </span>
+                <span className="font-black text-gray-500">{Math.round((subtotal / 1999) * 100)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-red-600 to-amber-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.round((subtotal / 1999) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Cart Items */}
           <div className="flex-1 space-y-4">
@@ -162,15 +195,19 @@ export default function CartPage() {
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600">
-                  <span className="font-medium">Shipping</span>
-                  <span className="font-bold text-emerald-600">FREE</span>
+                  <span className="font-medium">Estimated Shipping</span>
+                  <span className={`font-bold ${subtotal >= 1999 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                    {subtotal >= 1999 ? 'FREE' : '₹99'}
+                  </span>
                 </div>
               </div>
 
               <div className="border-t border-gray-100 pt-4 mb-6">
                 <div className="flex justify-between items-baseline">
-                  <span className="text-sm font-black text-gray-900 uppercase">Total</span>
-                  <span className="text-2xl font-black text-gray-900">₹{cartTotal.toLocaleString('en-IN')}</span>
+                  <span className="text-sm font-black text-gray-900 uppercase">Estimated Total</span>
+                  <span className="text-2xl font-black text-gray-900">
+                    ₹{(subtotal >= 1999 ? cartTotal : cartTotal + 99).toLocaleString('en-IN')}
+                  </span>
                 </div>
                 <p className="text-[10px] text-gray-400 font-medium text-right mt-1">Inclusive of all taxes</p>
               </div>

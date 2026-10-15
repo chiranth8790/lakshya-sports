@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Filter, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
+import WhatsAppWidget from '../components/WhatsAppWidget';
 import { supabase } from '../library/supabase';
 
 export default function CategoryPage() {
@@ -41,8 +42,9 @@ export default function CategoryPage() {
     fetchProducts();
   }, []);
 
-  // 2. Reset filters when changing category categories
+  // 2. Reset filters and scroll to top when changing category
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     setSortBy('featured');
     setSelectedBrands([]);
     setMaxPrice(25000);
@@ -213,6 +215,12 @@ export default function CategoryPage() {
                 </button>
               </div>
             )}
+
+            {/* Looking for other products banner */}
+            <WhatsAppWidget 
+              variant="banner"
+              message={`Hi Lakshya Sports, I am browsing the ${categoryName?.replace(/-/g, ' ')} category and looking for other models or custom specifications...`}
+            />
           </div>
         </div>
       </div>

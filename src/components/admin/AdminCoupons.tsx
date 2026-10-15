@@ -6,14 +6,15 @@ interface Coupon {
   code: string;
   type: 'PERCENTAGE' | 'FIXED';
   value: number;
+  minOrderValue?: number;
   usageCount: number;
   expiry: string;
   active: boolean;
 }
 
 const DEFAULT_COUPONS: Coupon[] = [
-  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, usageCount: 0, expiry: '2026-12-31', active: true },
-  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, usageCount: 0, expiry: '2026-10-15', active: true },
+  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, minOrderValue: 1000, usageCount: 0, expiry: '2026-12-31', active: true },
+  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, minOrderValue: 2000, usageCount: 0, expiry: '2026-10-15', active: true },
 ];
 
 export default function AdminCoupons() {
@@ -33,6 +34,7 @@ export default function AdminCoupons() {
   const [code, setCode] = useState('');
   const [type, setType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
   const [value, setValue] = useState('');
+  const [minOrderValue, setMinOrderValue] = useState('');
   const [expiry, setExpiry] = useState('');
   const [active, setActive] = useState(true);
 
@@ -63,6 +65,7 @@ export default function AdminCoupons() {
       code: code.toUpperCase().trim(),
       type,
       value: Number(value),
+      minOrderValue: minOrderValue ? Number(minOrderValue) : undefined,
       usageCount: 0,
       expiry: expiry || 'No Expiry',
       active,
@@ -71,6 +74,7 @@ export default function AdminCoupons() {
     setCoupons((prev) => [newCoupon, ...prev]);
     setCode('');
     setValue('');
+    setMinOrderValue('');
     setExpiry('');
     setActiveTab('list');
   };
@@ -104,6 +108,7 @@ export default function AdminCoupons() {
                 <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black text-gray-400 uppercase tracking-wider">
                   <th className="p-4">Code</th>
                   <th className="p-4">Discount</th>
+                  <th className="p-4">Min. Order</th>
                   <th className="p-4">Usage</th>
                   <th className="p-4">Expiry</th>
                   <th className="p-4">Status</th>
@@ -129,6 +134,9 @@ export default function AdminCoupons() {
                     </td>
                     <td className="p-4 font-bold text-emerald-600">
                       {coupon.type === 'PERCENTAGE' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`}
+                    </td>
+                    <td className="p-4 text-gray-600 font-medium">
+                      {coupon.minOrderValue ? `₹${coupon.minOrderValue}` : 'None'}
                     </td>
                     <td className="p-4 text-gray-600">{coupon.usageCount} times</td>
                     <td className="p-4 text-gray-500">{coupon.expiry}</td>
@@ -194,7 +202,7 @@ export default function AdminCoupons() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Discount Value *</label>
               <input
@@ -203,6 +211,16 @@ export default function AdminCoupons() {
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={type === 'PERCENTAGE' ? 'e.g. 15' : 'e.g. 500'}
+                className="w-full border border-gray-300 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:border-black"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Min. Order (₹)</label>
+              <input
+                type="number"
+                value={minOrderValue}
+                onChange={(e) => setMinOrderValue(e.target.value)}
+                placeholder="e.g. 1000"
                 className="w-full border border-gray-300 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:border-black"
               />
             </div>

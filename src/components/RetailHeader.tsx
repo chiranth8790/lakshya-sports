@@ -254,7 +254,7 @@ export default function RetailHeader() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearchOpen(false);
-    navigate(`/category/rackets`);
+    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
   return (
@@ -544,6 +544,15 @@ export default function RetailHeader() {
                       </div>
                     </Link>
                   ))}
+                  {searchQuery.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleSearchSubmit}
+                      className="w-full mt-4 py-3 bg-black hover:bg-neutral-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition text-center"
+                    >
+                      View All Results for &quot;{searchQuery}&quot; &rarr;
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="text-xs text-gray-500 font-medium">
