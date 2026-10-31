@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Tag, Trash2, Copy, Check } from 'lucide-react';
+import { supabase } from '../../library/supabase';
 
 interface Coupon {
   id: string;
@@ -38,13 +39,40 @@ export default function AdminCoupons() {
   const [expiry, setExpiry] = useState('');
   const [active, setActive] = useState(true);
 
+  // Fetch coupons from Supabase & fallback to local storage
   useEffect(() => {
+    fetchCoupons();
+  }, []);
+
+  async function fetchCoupons() {
     try {
-      localStorage.setItem('lakshya_coupons', JSON.stringify(coupons));
+      const { data, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapped = data.map((c: any) => ({
+          id: String(c.id),
+          code: c.code,
+          type: c.type,
+          value: Number(c.value),
+          minOrderValue: c.min_order_value ? Number(c.min_order_value) : undefined,
+          usageCount: Number(c.usage_count) || 0,
+          expiry: c.expiry || 'No Expiry',
+          active: c.active ?? true,
+        }));
+        setCoupons(mapped);
+        try {
+          localStorage.setItem('lakshya_coupons', JSON.stringify(mapped));
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // ignore
     }
-  }, [coupons]);
+  }
 
   const handleCopy = (couponCode: string) => {
     navigator.clipboard.writeText(couponCode);
@@ -52,11 +80,16 @@ export default function AdminCoupons() {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     setCoupons((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await supabase.from('coupons').delete().eq('id', id);
+    } catch {
+      // ignore
+    }
   };
 
-  const handleCreateCoupon = (e: React.FormEvent) => {
+  const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code || !value) return;
 
@@ -77,6 +110,21 @@ export default function AdminCoupons() {
     setMinOrderValue('');
     setExpiry('');
     setActiveTab('list');
+
+    try {
+      await supabase.from('coupons').upsert([{
+        id: newCoupon.id,
+        code: newCoupon.code,
+        type: newCoupon.type,
+        value: newCoupon.value,
+        min_order_value: newCoupon.minOrderValue || null,
+        usage_count: 0,
+        expiry: newCoupon.expiry,
+        active: newCoupon.active
+      }]);
+    } catch {
+      // ignore
+    }
   };
 
   return (

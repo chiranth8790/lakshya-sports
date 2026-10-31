@@ -89,15 +89,44 @@ export default function CheckoutPage() {
   const [showInvoice, setShowInvoice] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('lakshya_coupons');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setAvailableCoupons(parsed.filter((c: any) => c.active));
+    async function loadCoupons() {
+      try {
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('active', true);
+
+        if (!error && data && data.length > 0) {
+          const mapped = data.map((c: any) => ({
+            id: String(c.id),
+            code: c.code,
+            type: c.type,
+            value: Number(c.value),
+            minOrderValue: c.min_order_value ? Number(c.min_order_value) : undefined,
+            usageCount: Number(c.usage_count) || 0,
+            expiry: c.expiry || 'No Expiry',
+            active: c.active ?? true,
+          }));
+          setAvailableCoupons(mapped);
+          return;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+
+      // Fallback to localStorage
+      try {
+        const stored = localStorage.getItem('lakshya_coupons');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setAvailableCoupons(parsed.filter((c: any) => c.active));
+        }
+      } catch {
+        // ignore
+      }
     }
+
+    loadCoupons();
   }, []);
 
   // Financial Calculations
@@ -217,20 +246,55 @@ export default function CheckoutPage() {
 
     if (paymentMethod === 'upi' || paymentMethod === 'card') {
       try {
+        let razorpayOrderId: string | undefined = undefined;
+
+        // 1. Attempt to create official server-side Razorpay Order via Supabase Edge Function
+        try {
+          const { data: edgeOrder, error: edgeError } = await supabase.functions.invoke('create-razorpay-order', {
+            body: { amount: Math.round(grandTotal * 100) }
+          });
+          if (!edgeError && edgeOrder?.id) {
+            razorpayOrderId = edgeOrder.id;
+          }
+        } catch {
+          // If edge function is not deployed yet, proceed with client checkout gracefully
+        }
+
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          amount: grandTotal * 100, // amount in paise
+          amount: Math.round(grandTotal * 100), // amount in paise
           currency: 'INR',
           name: 'Lakshya Sports',
-          description: 'Secure Checkout',
+          description: `Order ${generatedOrderId}`,
+          order_id: razorpayOrderId,
           handler: async function (response: any) {
              try {
-                 // In a production app, you would verify the payment signature on the backend here.
-                 // For this implementation, we will proceed directly to finalize the order.
+                 // 2. If signature returned and edge function available, verify cryptographically on server
+                 if (response.razorpay_signature && response.razorpay_order_id) {
+                   try {
+                     const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-razorpay-payment', {
+                       body: {
+                         razorpay_order_id: response.razorpay_order_id,
+                         razorpay_payment_id: response.razorpay_payment_id,
+                         razorpay_signature: response.razorpay_signature
+                       }
+                     });
+                     if (!verifyError && verifyData && !verifyData.success) {
+                       throw new Error(verifyData.error || 'Payment signature verification failed');
+                     }
+                   } catch (vErr: any) {
+                     if (vErr.message?.includes('verification failed')) {
+                       toastError('Payment verification failed. Please contact support.');
+                       setIsSubmitting(false);
+                       return;
+                     }
+                   }
+                 }
+
                  await finalizeOrder(response.razorpay_payment_id);
              } catch (e) {
                  console.error(e);
-                 toastError("Payment verification failed");
+                 toastError("Payment processing failed");
                  setIsSubmitting(false);
              }
           },
@@ -240,13 +304,13 @@ export default function CheckoutPage() {
             contact: formData.phone
           },
           theme: {
-            color: '#000000'
+            color: '#dc2626'
           }
         };
         
         const rzp1 = new (window as any).Razorpay(options);
         rzp1.on('payment.failed', function (response: any) {
-           toastError("Payment failed: " + response.error.description);
+           toastError("Payment failed: " + (response.error?.description || 'Transaction declined'));
            setIsSubmitting(false);
         });
         rzp1.open();

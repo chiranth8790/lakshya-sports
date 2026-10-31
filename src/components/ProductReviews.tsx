@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Star, CheckCircle2, User, MessageSquarePlus, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { supabase } from '../library/supabase';
 
 interface Review {
   id: string;
@@ -46,6 +47,7 @@ export default function ProductReviews({ productName }: { productName: string })
   const { success: toastSuccess } = useToast();
   const [reviews, setReviews] = useState<Review[]>(DEFAULT_REVIEWS);
   const [modalOpen, setModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     name: '',
     rating: 5,
@@ -53,24 +55,73 @@ export default function ProductReviews({ productName }: { productName: string })
     comment: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function fetchReviews() {
+      try {
+        const { data, error } = await supabase
+          .from('product_reviews')
+          .select('*')
+          .eq('product_name', productName)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          const mapped: Review[] = data.map((r: any) => ({
+            id: String(r.id),
+            name: r.name,
+            rating: Number(r.rating) || 5,
+            date: new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+            title: r.title || 'Verified Review',
+            comment: r.comment,
+            verified: r.verified ?? true,
+          }));
+          setReviews([...mapped, ...DEFAULT_REVIEWS]);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (productName) {
+      fetchReviews();
+    }
+  }, [productName]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.comment) return;
 
+    setIsSubmitting(true);
     const newRev: Review = {
       id: Date.now().toString(),
-      name: form.name,
+      name: form.name.trim(),
       rating: form.rating,
       date: 'Just now',
-      title: form.title || 'Great gear!',
-      comment: form.comment,
+      title: form.title.trim() || 'Great gear!',
+      comment: form.comment.trim(),
       verified: true,
     };
 
-    setReviews([newRev, ...reviews]);
+    setReviews((prev) => [newRev, ...prev]);
     setModalOpen(false);
     setForm({ name: '', rating: 5, title: '', comment: '' });
     toastSuccess('Review submitted! Thank you for your feedback.');
+
+    try {
+      await supabase.from('product_reviews').insert([
+        {
+          product_name: productName,
+          name: newRev.name,
+          rating: newRev.rating,
+          title: newRev.title,
+          comment: newRev.comment,
+          verified: true,
+        },
+      ]);
+    } catch {
+      // ignore
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const avgRating = (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1);
@@ -208,9 +259,10 @@ export default function ProductReviews({ productName }: { productName: string })
 
               <button
                 type="submit"
-                className="w-full bg-black hover:bg-neutral-800 text-white font-bold h-12 rounded-xl text-xs uppercase tracking-wider transition"
+                disabled={isSubmitting}
+                className="w-full bg-black hover:bg-neutral-800 disabled:opacity-50 text-white font-bold h-12 rounded-xl text-xs uppercase tracking-wider transition"
               >
-                Submit Review
+                {isSubmitting ? 'Submitting...' : 'Submit Review'}
               </button>
             </form>
           </div>
