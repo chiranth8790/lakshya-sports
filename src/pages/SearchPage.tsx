@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../library/supabase';
 import ProductCard from '../components/ProductCard';
 import WhatsAppWidget from '../components/WhatsAppWidget';
+import SEO from '../components/SEO';
 import { Search, Loader2, ArrowLeft } from 'lucide-react';
 
 export default function SearchPage() {
@@ -50,6 +51,10 @@ export default function SearchPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <SEO 
+        title={query ? `Search Results for "${query}" | Lakshya Sports` : 'Search Sports Gear | Lakshya Sports'}
+        description={`Search badminton rackets, shuttles, shoes, cricket bats, and pro sports gear at Lakshya Sports Bengaluru. Genuine gear with express shipping.`}
+      />
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-6 mb-8">
         <div>

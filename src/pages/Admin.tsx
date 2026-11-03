@@ -9,18 +9,19 @@ import {
   Tag, 
   Users, 
   BarChart3,
+  Mail,
   LogOut
 } from 'lucide-react';
 import AdminDashboard from '../components/admin/AdminDashboard';
-// Import these as we build them next:
 import AdminProducts from '../components/admin/AdminProducts';
 import AdminMerchandising from '../components/admin/AdminMerchandising';
 import AdminOrders from '../components/admin/AdminOrders';
 import AdminCoupons from '../components/admin/AdminCoupons';
 import AdminCustomers from '../components/admin/AdminCustomers';
 import AdminAnalytics from '../components/admin/AdminAnalytics';
+import AdminInquiries from '../components/admin/AdminInquiries';
 
-type AdminTab = 'dashboard' | 'products' | 'merchandising' | 'orders' | 'coupons' | 'customers' | 'analytics';
+type AdminTab = 'dashboard' | 'products' | 'merchandising' | 'orders' | 'coupons' | 'customers' | 'analytics' | 'inquiries';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -39,6 +40,7 @@ export default function Admin() {
     { id: 'coupons', label: 'Coupons', icon: Tag },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'inquiries', label: 'Inquiries', icon: Mail },
   ];
 
   return (
@@ -54,7 +56,7 @@ export default function Admin() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id as AdminTab)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   activeTab === item.id 
                     ? 'bg-neutral-800 text-white' 
                     : 'text-gray-400 hover:bg-neutral-900 hover:text-white'
@@ -69,7 +71,7 @@ export default function Admin() {
         <div className="mt-auto p-6 border-t border-neutral-800">
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-white transition"
+            className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-white transition cursor-pointer"
           >
             <LogOut className="w-4 h-4" /> Sign Out
           </button>
@@ -85,6 +87,7 @@ export default function Admin() {
         {activeTab === 'coupons' && <AdminCoupons />}
         {activeTab === 'customers' && <AdminCustomers />}
         {activeTab === 'analytics' && <AdminAnalytics />}
+        {activeTab === 'inquiries' && <AdminInquiries />}
       </main>
     </div>
   );

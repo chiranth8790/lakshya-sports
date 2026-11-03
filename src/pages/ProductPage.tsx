@@ -21,6 +21,7 @@ import {
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import SEO from '../components/SEO';
+import { getProductSchema, getBreadcrumbSchema } from '../utils/seoSchemas';
 import WhatsAppWidget from '../components/WhatsAppWidget';
 import SizeGuideModal from '../components/SizeGuideModal';
 import ProductReviews from '../components/ProductReviews';
@@ -281,12 +282,25 @@ export default function ProductPage() {
     navigate('/checkout', { state: { directCheckoutItem: buildOrderItem() } });
   };
 
+  const productJsonLd = [
+    getProductSchema(product, price, isOutOfStock),
+    getBreadcrumbSchema([
+      { name: 'Home', url: 'https://lakshyashop.in/' },
+      { name: product.category.replace(/-/g, ' '), url: `https://lakshyashop.in/category/${product.category}` },
+      { name: product.name, url: `https://lakshyashop.in/product/${product.id}` }
+    ])
+  ];
+
   return (
     <div className="min-h-screen bg-white">
       <SEO 
-        title={`${product.name} - ${product.brand}`} 
-        description={product.description || `Buy ${product.name} online at Lakshya Sports. ₹${price.toLocaleString('en-IN')}`}
+        title={`${product.name} | Buy Online at Best Price Bangalore - Lakshya Sports`} 
+        description={product.description || `Buy genuine ${product.name} (${product.brand}) online at best price ₹${price.toLocaleString('en-IN')} in Bangalore from Lakshya Sports. 100% authentic with custom stringing & express delivery.`}
+        keywords={`${product.name}, buy ${product.name}, ${product.brand} badminton, ${product.name} price bangalore, original badminton racket, lakshya sports`}
         image={galleryImages[0] || ''}
+        canonical={`https://lakshyashop.in/product/${product.id}`}
+        type="product"
+        jsonLd={productJsonLd}
       />
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Breadcrumb */}

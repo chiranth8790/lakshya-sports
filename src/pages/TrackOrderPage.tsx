@@ -27,16 +27,47 @@ export default function TrackOrderPage() {
 
     try {
       const trimmedId = orderId.trim();
-      let query = supabase.from('orders').select('*').eq('order_id', trimmedId);
+      let resolvedOrder = null;
 
-      const { data, error: dbError } = await query.maybeSingle();
+      // 1. Try secure RPC function (permits guest tracking with privacy preservation)
+      try {
+        const { data: rpcRes, error: rpcError } = await supabase.rpc('track_order', {
+          p_order_id: trimmedId,
+          p_contact: contact.trim() || null
+        });
 
-      if (dbError) throw dbError;
+        if (!rpcError && rpcRes) {
+          if (!rpcRes.found) {
+            setError("We couldn't find an order matching that Order ID. Please double check and try again.");
+            setLoading(false);
+            return;
+          }
+          if (rpcRes.verified === false && rpcRes.error === 'CONTACT_MISMATCH') {
+            setError("Order found, but the email or phone number does not match this order's records.");
+            setLoading(false);
+            return;
+          }
+          if (rpcRes.order) {
+            resolvedOrder = rpcRes.order;
+          }
+        }
+      } catch (rpcErr) {
+        console.warn('RPC track_order lookup fallback:', rpcErr);
+      }
 
-      if (!data) {
-        setError("We couldn't find an order matching that Order ID. Please double check and try again.");
-      } else {
-        // Optional verification if contact was provided
+      // 2. Fallback to direct query if RPC is not available
+      if (!resolvedOrder) {
+        let query = supabase.from('orders').select('*').eq('order_id', trimmedId);
+        const { data, error: dbError } = await query.maybeSingle();
+
+        if (dbError) throw dbError;
+
+        if (!data) {
+          setError("We couldn't find an order matching that Order ID. Please double check and try again.");
+          setLoading(false);
+          return;
+        }
+
         if (contact.trim()) {
           const matchEmail = data.customer_email?.toLowerCase() === contact.trim().toLowerCase();
           const matchPhone = data.customer_phone?.replace(/\D/g, '') === contact.trim().replace(/\D/g, '');
@@ -46,8 +77,10 @@ export default function TrackOrderPage() {
             return;
           }
         }
-        setOrder(data);
+        resolvedOrder = data;
       }
+
+      setOrder(resolvedOrder);
     } catch (err: any) {
       console.error('Tracking fetch error:', err);
       setError('An error occurred while tracking your order. Please try again.');

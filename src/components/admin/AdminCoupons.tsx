@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Plus, Tag, Trash2, Copy, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Tag, Trash2, Copy, Check, Power } from 'lucide-react';
 import { supabase } from '../../library/supabase';
+import { useToast } from '../../context/ToastContext';
 
 interface Coupon {
   id: string;
@@ -19,10 +20,17 @@ const DEFAULT_COUPONS: Coupon[] = [
 ];
 
 export default function AdminCoupons() {
+  const { success: toastSuccess, error: toastError } = useToast();
+
   const [coupons, setCoupons] = useState<Coupon[]>(() => {
     try {
       const stored = localStorage.getItem('lakshya_coupons');
-      return stored ? JSON.parse(stored) : DEFAULT_COUPONS;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      localStorage.setItem('lakshya_coupons', JSON.stringify(DEFAULT_COUPONS));
+      return DEFAULT_COUPONS;
     } catch {
       return DEFAULT_COUPONS;
     }
@@ -39,7 +47,18 @@ export default function AdminCoupons() {
   const [expiry, setExpiry] = useState('');
   const [active, setActive] = useState(true);
 
-  // Fetch coupons from Supabase & fallback to local storage
+  // Helper to persist to localStorage & broadcast event across website
+  const persistCoupons = (newList: Coupon[]) => {
+    try {
+      localStorage.setItem('lakshya_coupons', JSON.stringify(newList));
+      window.dispatchEvent(new Event('lakshya_coupons_updated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {
+      console.error('Failed to write coupons to localStorage:', e);
+    }
+  };
+
+  // Fetch coupons from Supabase and merge with local storage
   useEffect(() => {
     fetchCoupons();
   }, []);
@@ -52,9 +71,9 @@ export default function AdminCoupons() {
         .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        const mapped = data.map((c: any) => ({
+        const remoteMapped: Coupon[] = data.map((c: any) => ({
           id: String(c.id),
-          code: c.code,
+          code: String(c.code).toUpperCase().trim(),
           type: c.type,
           value: Number(c.value),
           minOrderValue: c.min_order_value ? Number(c.min_order_value) : undefined,
@@ -62,26 +81,41 @@ export default function AdminCoupons() {
           expiry: c.expiry || 'No Expiry',
           active: c.active ?? true,
         }));
-        setCoupons(mapped);
-        try {
-          localStorage.setItem('lakshya_coupons', JSON.stringify(mapped));
-        } catch {
-          // ignore
-        }
+
+        setCoupons(prev => {
+          const map = new Map<string, Coupon>();
+          // Put remote first
+          remoteMapped.forEach(c => map.set(c.code, c));
+          // Keep local ones that haven't synced yet
+          prev.forEach(c => {
+            if (!map.has(c.code)) {
+              map.set(c.code, c);
+            }
+          });
+          const merged = Array.from(map.values());
+          persistCoupons(merged);
+          return merged;
+        });
       }
     } catch {
-      // ignore
+      // Remote table might not exist yet; local state remains authoritative
     }
   }
 
   const handleCopy = (couponCode: string) => {
     navigator.clipboard.writeText(couponCode);
     setCopiedCode(couponCode);
+    toastSuccess(`Code "${couponCode}" copied to clipboard`);
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
   const handleDelete = async (id: string) => {
-    setCoupons((prev) => prev.filter((c) => c.id !== id));
+    const target = coupons.find(c => c.id === id);
+    const updated = coupons.filter((c) => c.id !== id);
+    setCoupons(updated);
+    persistCoupons(updated);
+    toastSuccess(`Coupon ${target?.code || ''} removed`);
+
     try {
       await supabase.from('coupons').delete().eq('id', id);
     } catch {
@@ -89,28 +123,76 @@ export default function AdminCoupons() {
     }
   };
 
+  const handleToggleActive = async (id: string) => {
+    const updated = coupons.map((c) => (c.id === id ? { ...c, active: !c.active } : c));
+    setCoupons(updated);
+    persistCoupons(updated);
+    
+    const target = updated.find(c => c.id === id);
+    toastSuccess(`Coupon ${target?.code} is now ${target?.active ? 'Active' : 'Disabled'}`);
+
+    try {
+      if (target) {
+        await supabase.from('coupons').update({ active: target.active }).eq('id', id);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code || !value) return;
+    const cleanCode = code.toUpperCase().trim();
+    if (!cleanCode || !value) {
+      toastError('Please enter a coupon code and discount value');
+      return;
+    }
+
+    const numValue = Number(value);
+    if (isNaN(numValue) || numValue <= 0) {
+      toastError('Please enter a valid positive discount value');
+      return;
+    }
+
+    if (type === 'PERCENTAGE' && numValue > 100) {
+      toastError('Percentage discount cannot exceed 100%');
+      return;
+    }
 
     const newCoupon: Coupon = {
       id: Date.now().toString(),
-      code: code.toUpperCase().trim(),
+      code: cleanCode,
       type,
-      value: Number(value),
+      value: numValue,
       minOrderValue: minOrderValue ? Number(minOrderValue) : undefined,
       usageCount: 0,
       expiry: expiry || 'No Expiry',
       active,
     };
 
-    setCoupons((prev) => [newCoupon, ...prev]);
+    // Replace if exists, else prepend
+    const existingIndex = coupons.findIndex(c => c.code === cleanCode);
+    let updated: Coupon[];
+    if (existingIndex >= 0) {
+      updated = [...coupons];
+      updated[existingIndex] = newCoupon;
+    } else {
+      updated = [newCoupon, ...coupons];
+    }
+
+    setCoupons(updated);
+    persistCoupons(updated);
+
+    // Reset inputs
     setCode('');
     setValue('');
     setMinOrderValue('');
     setExpiry('');
     setActiveTab('list');
 
+    toastSuccess(`Coupon "${cleanCode}" created & activated across the store!`);
+
+    // Sync to Supabase in the background
     try {
       await supabase.from('coupons').upsert([{
         id: newCoupon.id,
@@ -123,7 +205,7 @@ export default function AdminCoupons() {
         active: newCoupon.active
       }]);
     } catch {
-      // ignore
+      // Supabase table not created yet; local storage guarantees persistence
     }
   };
 
@@ -132,7 +214,7 @@ export default function AdminCoupons() {
       <div className="flex items-center gap-4 border-b border-gray-200 mb-6 pb-4">
         <button
           onClick={() => setActiveTab('list')}
-          className={`text-sm font-black uppercase tracking-wider transition ${
+          className={`text-sm font-black uppercase tracking-wider transition cursor-pointer ${
             activeTab === 'list' ? 'text-black border-b-2 border-black pb-1' : 'text-gray-400 hover:text-black'
           }`}
         >
@@ -140,7 +222,7 @@ export default function AdminCoupons() {
         </button>
         <button
           onClick={() => setActiveTab('editor')}
-          className={`text-sm font-black uppercase tracking-wider transition flex items-center gap-1 ${
+          className={`text-sm font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
             activeTab === 'editor' ? 'text-black border-b-2 border-black pb-1' : 'text-gray-400 hover:text-black'
           }`}
         >
@@ -151,65 +233,73 @@ export default function AdminCoupons() {
       {activeTab === 'list' && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
           {coupons.length > 0 ? (
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                  <th className="p-4">Code</th>
-                  <th className="p-4">Discount</th>
-                  <th className="p-4">Min. Order</th>
-                  <th className="p-4">Usage</th>
-                  <th className="p-4">Expiry</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs font-semibold text-gray-800">
-                {coupons.map((coupon) => (
-                  <tr key={coupon.id} className="hover:bg-gray-50 transition">
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-gray-900 border border-gray-200 bg-gray-50 px-2.5 py-1 rounded text-xs font-mono">
-                          {coupon.code}
-                        </span>
-                        <button
-                          onClick={() => handleCopy(coupon.code)}
-                          className="text-gray-400 hover:text-black p-1 transition"
-                          title="Copy Code"
-                        >
-                          {copiedCode === coupon.code ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </td>
-                    <td className="p-4 font-bold text-emerald-600">
-                      {coupon.type === 'PERCENTAGE' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`}
-                    </td>
-                    <td className="p-4 text-gray-600 font-medium">
-                      {coupon.minOrderValue ? `₹${coupon.minOrderValue}` : 'None'}
-                    </td>
-                    <td className="p-4 text-gray-600">{coupon.usageCount} times</td>
-                    <td className="p-4 text-gray-500">{coupon.expiry}</td>
-                    <td className="p-4">
-                      <span
-                        className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider ${
-                          coupon.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {coupon.active ? 'Active' : 'Expired'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => handleDelete(coupon.id)}
-                        className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-600 transition"
-                        title="Delete Coupon"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                    <th className="p-4">Code</th>
+                    <th className="p-4">Discount</th>
+                    <th className="p-4">Min. Order</th>
+                    <th className="p-4">Usage</th>
+                    <th className="p-4">Expiry</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-xs font-semibold text-gray-800">
+                  {coupons.map((coupon) => (
+                    <tr key={coupon.id} className="hover:bg-gray-50 transition">
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-gray-900 border border-gray-200 bg-gray-50 px-2.5 py-1 rounded text-xs font-mono">
+                            {coupon.code}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(coupon.code)}
+                            className="text-gray-400 hover:text-black p-1 transition cursor-pointer"
+                            title="Copy Code"
+                          >
+                            {copiedCode === coupon.code ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="p-4 font-bold text-emerald-600">
+                        {coupon.type === 'PERCENTAGE' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`}
+                      </td>
+                      <td className="p-4 text-gray-600 font-medium">
+                        {coupon.minOrderValue ? `₹${coupon.minOrderValue.toLocaleString('en-IN')}` : 'None'}
+                      </td>
+                      <td className="p-4 text-gray-600">{coupon.usageCount} times</td>
+                      <td className="p-4 text-gray-500">{coupon.expiry}</td>
+                      <td className="p-4">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleActive(coupon.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                            coupon.active 
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                          title="Click to toggle Active / Disabled"
+                        >
+                          <Power className="w-3 h-3" />
+                          <span>{coupon.active ? 'Active' : 'Disabled'}</span>
+                        </button>
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => handleDelete(coupon.id)}
+                          className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-600 transition cursor-pointer"
+                          title="Delete Coupon"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="p-12 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">
               No coupons created yet. Click &quot;Create Coupon&quot; to add one.
@@ -232,8 +322,8 @@ export default function AdminCoupons() {
                 type="text"
                 required
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. LAKSHYA20"
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="e.g. BADMINTON20"
                 className="w-full border border-gray-300 rounded-lg p-2.5 text-xs font-black uppercase focus:outline-none focus:border-black"
               />
             </div>
@@ -252,10 +342,14 @@ export default function AdminCoupons() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Discount Value *</label>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                {type === 'PERCENTAGE' ? 'Discount % *' : 'Discount Amount (₹) *'}
+              </label>
               <input
                 type="number"
                 required
+                min="1"
+                max={type === 'PERCENTAGE' ? '100' : undefined}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={type === 'PERCENTAGE' ? 'e.g. 15' : 'e.g. 500'}
@@ -266,6 +360,7 @@ export default function AdminCoupons() {
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Min. Order (₹)</label>
               <input
                 type="number"
+                min="0"
                 value={minOrderValue}
                 onChange={(e) => setMinOrderValue(e.target.value)}
                 placeholder="e.g. 1000"
@@ -289,20 +384,20 @@ export default function AdminCoupons() {
                 type="checkbox"
                 checked={active}
                 onChange={(e) => setActive(e.target.checked)}
-                className="w-4 h-4 text-black border-gray-300 rounded focus:ring-black"
+                className="w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
               />
-              <span className="text-xs font-bold text-gray-900 uppercase">Active Coupon</span>
+              <span className="text-xs font-bold text-gray-900 uppercase">Active Immediately</span>
             </label>
 
             <button
               type="submit"
-              className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition hover:bg-neutral-800"
+              className="px-6 py-2.5 bg-black hover:bg-neutral-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition cursor-pointer"
             >
-              Create Coupon
+              Create & Activate Coupon
             </button>
           </div>
         </form>
       )}
     </div>
   );
-}
+}

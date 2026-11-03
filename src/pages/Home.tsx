@@ -1,8 +1,33 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Truck, RotateCcw, ArrowRight, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
+import { ShieldCheck, Truck, RotateCcw, ArrowRight, ChevronLeft, ChevronRight, Tag, ChevronDown, ChevronUp, MapPin, Award } from 'lucide-react';
 import { supabase } from '../library/supabase';
 import ProductCarousel from '../components/ProductCarousel';
+import SEO from '../components/SEO';
+import { getStoreLocalBusinessSchema, getWebSiteSearchSchema, getFAQPageSchema } from '../utils/seoSchemas';
+
+const HOME_FAQS = [
+  {
+    question: "Where can I buy 100% original Yonex and Li-Ning badminton rackets in Bangalore?",
+    answer: "You can purchase 100% authentic Yonex, Li-Ning, and Victor badminton rackets online at Lakshya Sports (lakshyashop.in) or walk in directly to our Bengaluru pro shops located at Chikkalasandra (South BLR) and JP Nagar 7th Phase. All rackets feature official brand holograms, genuine scratch codes, and full manufacturer warranty."
+  },
+  {
+    question: "Do you provide custom electronic badminton racket stringing in Bangalore?",
+    answer: "Yes! Lakshya Sports operates professional 6-point electronic stringing machines at our Bengaluru stores. You can choose premium Yonex strings (BG 65, BG 65 Titanium, BG 66 Ultimax, BG 80 Power, Nanogy 95, Aerobite) and select exact tension from 22 lbs up to 30 lbs for tournament play."
+  },
+  {
+    question: "How do I choose between Head-Heavy, Head-Light, and Even-Balance badminton rackets?",
+    answer: "Head-Heavy rackets (e.g. Yonex Astrox series) provide maximum smash power for aggressive offensive players. Head-Light rackets (e.g. Yonex Nanoflare series) offer lightning-fast swing speeds for rapid defense and doubles net play. Even-Balance rackets (e.g. Yonex Arcsaber series) give complete control and versatility across all court positions."
+  },
+  {
+    question: "What is your shipping and delivery timeline across Bangalore and India?",
+    answer: "For Bengaluru addresses, orders typically arrive in 24 to 48 hours. Express pan-India courier delivery takes 2 to 4 business days for metro cities. We offer Free Shipping on all orders above ₹1,999."
+  },
+  {
+    question: "Do you provide cricket bat knocking, oiling, and preparation in Bangalore?",
+    answer: "Yes, our certified pro gear technicians provide machine knocking, linseed oil treatment, and protective scuff sheet application for English Willow and Kashmir Willow cricket bats at our Bengaluru centers."
+  }
+];
 
 const DEFAULT_SLIDES = [
   {
@@ -66,6 +91,14 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slides, setSlides] = useState<any[]>(getInitialSlides);
   const [bannersLoading, setBannersLoading] = useState(() => getInitialSlides().length === 0);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  // Schema.org Structured Data for Google SERP Domination
+  const homeJsonLd = [
+    ...getStoreLocalBusinessSchema(),
+    getWebSiteSearchSchema(),
+    getFAQPageSchema(HOME_FAQS)
+  ];
 
   // Supabase State
   const [newArrivals, setNewArrivals] = useState<any[]>([]);
@@ -217,6 +250,13 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-100 pb-16">
+      <SEO
+        title="Lakshya Sports | #1 Badminton & Cricket Store in Bangalore | Pro Stringing"
+        description="Shop 100% authentic Yonex, Li-Ning badminton rackets, tournament shuttles, English willow cricket bats, and precision electronic stringing in Bangalore. Stores at Chikkalasandra & JP Nagar 7th Phase."
+        keywords="badminton goods, badminton racquets, badminton rackets bangalore, buy badminton racket online, yonex badminton shop bangalore, badminton stringing near me, cricket bats bangalore, lakshya sports"
+        canonical="https://lakshyashop.in/"
+        jsonLd={homeJsonLd}
+      />
       {/* Sliding Hero Window */}
       <section 
         className="relative overflow-hidden bg-black text-white w-full touch-pan-y min-h-[300px] sm:min-h-[420px]"
@@ -376,6 +416,102 @@ export default function Home() {
           <ProductCarousel products={newArrivals} />
         </section>
       )}
+
+      {/* ── GOOGLE SEARCH AUTHORITY & LOCAL SEO SECTION ── */}
+      <section className="max-w-7xl mx-auto px-4 mt-16">
+        <div className="bg-white rounded-3xl border border-gray-200 p-8 sm:p-12 shadow-xs">
+          
+          {/* Header */}
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <span className="text-[11px] font-black uppercase tracking-widest text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded-full inline-block mb-3">
+              Bengaluru's Premier Sports Destination
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-gray-900 mb-3">
+              Why Bengaluru Badminton & Cricket Champions Choose Lakshya Sports
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+              From competitive academy trainees to weekend club warriors, Lakshya Sports is Bengaluru's premier specialist for 100% genuine tournament gear, 6-point electronic badminton racket gutting, and custom cricket bat preparation.
+            </p>
+          </div>
+
+          {/* 3 Pillars */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6">
+              <div className="w-10 h-10 bg-red-100 text-red-600 rounded-xl flex items-center justify-center mb-4">
+                <Award className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-black uppercase text-gray-900 mb-2">100% Authentic Guarantee</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Every Yonex, Li-Ning, Victor, SS, and SG product is backed by official brand holograms and tamper-proof verification codes. Zero counterfeits.
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6">
+              <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-black uppercase text-gray-900 mb-2">Electronic Racket Stringing</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Precision tensioning on computerized stringing machines. Choose your exact tension (22 lbs to 30 lbs) with Yonex BG 65, BG 66 Ultimax, or Nanogy 95.
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6">
+              <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mb-4">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-black uppercase text-gray-900 mb-2">2 Walk-In Stores in Bangalore</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Experience equipment in-person at our Chikkalasandra Flagship Store or JP Nagar 7th Phase Pro Shop. Open 7 days a week: 9:30 AM – 9:30 PM.
+              </p>
+            </div>
+          </div>
+
+          {/* Google High-Intent FAQ Accordion */}
+          <div className="border-t border-gray-200 pt-10">
+            <div className="text-center mb-8">
+              <h3 className="text-xl font-black uppercase tracking-tight text-gray-900">
+                Frequently Asked Questions About Badminton & Cricket Gear
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Everything you need to know about choosing rackets, custom stringing, and authenticity
+              </p>
+            </div>
+
+            <div className="max-w-3xl mx-auto space-y-3">
+              {HOME_FAQS.map((faq, index) => {
+                const isOpen = openFaq === index;
+                return (
+                  <div 
+                    key={index} 
+                    className="border border-gray-200 rounded-2xl overflow-hidden transition-all bg-gray-50/50 hover:bg-gray-50"
+                  >
+                    <button
+                      onClick={() => setOpenFaq(isOpen ? null : index)}
+                      className="w-full text-left p-5 flex items-center justify-between gap-4 font-bold text-xs sm:text-sm text-gray-900 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-red-600 font-black">Q{index + 1}.</span> {faq.question}
+                      </span>
+                      {isOpen ? (
+                        <ChevronUp className="w-4 h-4 text-gray-500 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-5 text-xs text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
+                        {faq.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+      </section>
     </main>
   );
 }
