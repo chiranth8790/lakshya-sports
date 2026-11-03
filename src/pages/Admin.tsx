@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../library/supabase';
 import { 
@@ -10,18 +10,32 @@ import {
   Users, 
   BarChart3,
   Mail,
-  LogOut
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
-import AdminDashboard from '../components/admin/AdminDashboard';
-import AdminProducts from '../components/admin/AdminProducts';
-import AdminMerchandising from '../components/admin/AdminMerchandising';
-import AdminOrders from '../components/admin/AdminOrders';
-import AdminCoupons from '../components/admin/AdminCoupons';
-import AdminCustomers from '../components/admin/AdminCustomers';
-import AdminAnalytics from '../components/admin/AdminAnalytics';
-import AdminInquiries from '../components/admin/AdminInquiries';
+
+// Lazy-load admin tabs for lightning-fast initial load
+const AdminDashboard = lazy(() => import('../components/admin/AdminDashboard'));
+const AdminProducts = lazy(() => import('../components/admin/AdminProducts'));
+const AdminMerchandising = lazy(() => import('../components/admin/AdminMerchandising'));
+const AdminOrders = lazy(() => import('../components/admin/AdminOrders'));
+const AdminCoupons = lazy(() => import('../components/admin/AdminCoupons'));
+const AdminCustomers = lazy(() => import('../components/admin/AdminCustomers'));
+const AdminAnalytics = lazy(() => import('../components/admin/AdminAnalytics'));
+const AdminInquiries = lazy(() => import('../components/admin/AdminInquiries'));
 
 type AdminTab = 'dashboard' | 'products' | 'merchandising' | 'orders' | 'coupons' | 'customers' | 'analytics' | 'inquiries';
+
+function TabLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center gap-2.5 text-xs font-bold text-gray-500 uppercase tracking-widest bg-white border border-gray-200 px-5 py-3 rounded-xl shadow-xs">
+        <RefreshCw className="w-4 h-4 text-red-600 animate-spin" />
+        <span>Loading Tab...</span>
+      </div>
+    </div>
+  );
+}
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -80,14 +94,16 @@ export default function Admin() {
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 p-8 overflow-y-auto">
-        {activeTab === 'dashboard' && <AdminDashboard />}
-        {activeTab === 'products' && <AdminProducts />}
-        {activeTab === 'merchandising' && <AdminMerchandising />}
-        {activeTab === 'orders' && <AdminOrders />}
-        {activeTab === 'coupons' && <AdminCoupons />}
-        {activeTab === 'customers' && <AdminCustomers />}
-        {activeTab === 'analytics' && <AdminAnalytics />}
-        {activeTab === 'inquiries' && <AdminInquiries />}
+        <Suspense fallback={<TabLoadingFallback />}>
+          {activeTab === 'dashboard' && <AdminDashboard />}
+          {activeTab === 'products' && <AdminProducts />}
+          {activeTab === 'merchandising' && <AdminMerchandising />}
+          {activeTab === 'orders' && <AdminOrders />}
+          {activeTab === 'coupons' && <AdminCoupons />}
+          {activeTab === 'customers' && <AdminCustomers />}
+          {activeTab === 'analytics' && <AdminAnalytics />}
+          {activeTab === 'inquiries' && <AdminInquiries />}
+        </Suspense>
       </main>
     </div>
   );

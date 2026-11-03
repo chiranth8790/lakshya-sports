@@ -5,6 +5,7 @@ import { supabase } from '../library/supabase';
 import ProductCarousel from '../components/ProductCarousel';
 import SEO from '../components/SEO';
 import { getStoreLocalBusinessSchema, getWebSiteSearchSchema, getFAQPageSchema } from '../utils/seoSchemas';
+import { fetchWithCache } from '../utils/productCache';
 
 const HOME_FAQS = [
   {
@@ -206,46 +207,40 @@ export default function Home() {
     image: item.images && item.images.length > 0 ? item.images[0] : '',
   });
 
-  // Fetch Recommended Products
+  // Fetch all home catalog products in ONE compact query with 0ms client-side cache
   useEffect(() => {
-    const fetchRecommended = async () => {
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .gt('stock', 0)
-        .limit(20);
+    async function loadHomeProducts() {
+      try {
+        const cachedData = await fetchWithCache('home_catalog_v2', async () => {
+          const { data, error } = await supabase
+            .from('products')
+            .select('id, name, brand, category, price, original_price, images, image, stock, collections')
+            .order('id', { ascending: false })
+            .limit(60);
 
-      if (data) setRecommendedGear(data.map(formatProduct));
-    };
-    fetchRecommended();
-  }, []);
+          if (error || !data) return { recommended: [], arrivals: [], sale: [] };
 
-  // Fetch New Arrivals
-  useEffect(() => {
-    const fetchNewArrivals = async () => {
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .contains('collections', ['new_arrivals'])
-        .limit(20);
-        
-      if (data) setNewArrivals(data.map(formatProduct));
-    };
-    fetchNewArrivals();
-  }, []);
+          const formatted = data.map(formatProduct);
+          const recommended = formatted.filter((p: any) => Number(p.stock) > 0).slice(0, 16);
+          const arrivals = formatted.filter((p: any) => Array.isArray(p.collections) && p.collections.includes('new_arrivals')).slice(0, 16);
+          const sale = formatted.filter((p: any) => Array.isArray(p.collections) && p.collections.includes('sale')).slice(0, 16);
 
-  // Fetch On Sale
-  useEffect(() => {
-    const fetchOnSale = async () => {
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .contains('collections', ['sale'])
-        .limit(20);
-        
-      if (data) setOnSaleGear(data.map(formatProduct));
-    };
-    fetchOnSale();
+          return {
+            recommended: recommended.length > 0 ? recommended : formatted.slice(0, 12),
+            arrivals: arrivals.length > 0 ? arrivals : formatted.slice(0, 12),
+            sale: sale.length > 0 ? sale : formatted.slice(0, 12),
+          };
+        }, 3 * 60 * 1000); // 3-minute SWR cache
+
+        setRecommendedGear(cachedData.recommended);
+        setNewArrivals(cachedData.arrivals);
+        setOnSaleGear(cachedData.sale);
+      } catch (err) {
+        console.error('Home products load error:', err);
+      }
+    }
+
+    loadHomeProducts();
   }, []);
 
   return (

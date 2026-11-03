@@ -25,6 +25,7 @@ import { getProductSchema, getBreadcrumbSchema } from '../utils/seoSchemas';
 import WhatsAppWidget from '../components/WhatsAppWidget';
 import SizeGuideModal from '../components/SizeGuideModal';
 import ProductReviews from '../components/ProductReviews';
+import { fetchWithCache } from '../utils/productCache';
 
 interface Variant {
   name: string;
@@ -129,26 +130,37 @@ export default function ProductPage() {
     async function fetchProduct() {
       if (!id) return;
       setLoading(true);
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', id)
-        .single();
 
-      if (!error && data) {
-        setProduct(data);
-        const firstColor = data.colors && data.colors.length > 0 ? data.colors[0] : null;
-        setSelectedColor(firstColor);
+      try {
+        const data = await fetchWithCache(`product_${id}`, async () => {
+          const { data: remoteData, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-        const initialVariants = firstColor?.variants && firstColor.variants.length > 0
-          ? firstColor.variants
-          : (data.variants || []);
-        if (initialVariants.length > 0) {
-          const firstInStock = initialVariants.find((v: Variant) => Number(v.stock) > 0) || initialVariants[0];
-          setSelectedVariant(firstInStock);
+          if (error || !remoteData) throw new Error('Product not found');
+          return remoteData;
+        }, 5 * 60 * 1000);
+
+        if (data) {
+          setProduct(data);
+          const firstColor = data.colors && data.colors.length > 0 ? data.colors[0] : null;
+          setSelectedColor(firstColor);
+
+          const initialVariants = firstColor?.variants && firstColor.variants.length > 0
+            ? firstColor.variants
+            : (data.variants || []);
+          if (initialVariants.length > 0) {
+            const firstInStock = initialVariants.find((v: Variant) => Number(v.stock) > 0) || initialVariants[0];
+            setSelectedVariant(firstInStock);
+          }
         }
+      } catch (err) {
+        console.error('Error fetching product:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchProduct();
   }, [id]);

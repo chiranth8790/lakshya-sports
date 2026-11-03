@@ -144,6 +144,8 @@ export default function ProductCard({ product }: { product: any }) {
           <img
             src={displayImage}
             alt={product.name}
+            width={240}
+            height={240}
             className={`max-h-full max-w-full object-contain transition-transform duration-300 ${
               isOutOfStock ? 'opacity-70' : 'group-hover:scale-105'
             }`}

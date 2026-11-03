@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../library/supabase';
 import { Plus, Edit3, Trash2, CheckCircle2, AlertCircle, Search, X, ImagePlus, ChevronDown, ChevronUp, Upload } from 'lucide-react';
 import RichTextEditor from './RichTextEditor';
+import { invalidateCache } from '../../utils/productCache';
 
 interface Variant {
   name: string;
@@ -544,6 +545,7 @@ export default function AdminProducts() {
     if (error) {
       setStatusMsg({ text: error.message, type: 'error' });
     } else {
+      invalidateCache();
       setStatusMsg({ text: productId ? '✓ Product updated!' : '✓ Product created!', type: 'success' });
       fetchProducts();
       setActiveTab('list');
@@ -554,7 +556,10 @@ export default function AdminProducts() {
   const handleDelete = async (id?: string) => {
     if (!id || !confirm('Delete this product permanently?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) fetchProducts();
+    if (!error) {
+      invalidateCache();
+      fetchProducts();
+    }
   };
 
   const toggleCollection = (col: string) =>

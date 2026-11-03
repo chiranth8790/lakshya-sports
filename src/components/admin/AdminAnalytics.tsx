@@ -25,7 +25,7 @@ export default function AdminAnalytics() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('products').select('*');
+      const { data, error } = await supabase.from('products').select('id, name, brand, category, price, stock, colors, variants');
       if (!error && data) {
         setProducts(data);
       }

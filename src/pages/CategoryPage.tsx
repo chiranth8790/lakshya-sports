@@ -6,6 +6,7 @@ import WhatsAppWidget from '../components/WhatsAppWidget';
 import SEO from '../components/SEO';
 import { getBreadcrumbSchema } from '../utils/seoSchemas';
 import { supabase } from '../library/supabase';
+import { fetchWithCache } from '../utils/productCache';
 
 const CATEGORY_SEO_DATA: Record<string, { title: string; description: string; keywords: string; guideTitle?: string; guidePoints?: { title: string; desc: string }[] }> = {
   'rackets': {
@@ -98,29 +99,54 @@ export default function CategoryPage() {
   const [maxPrice, setMaxPrice] = useState<number>(25000);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-// 1. Fetch live data from Supabase on mount
+  // 1. Fetch targeted category products with 0ms client-side cache
   useEffect(() => {
     async function fetchProducts() {
+      if (!categoryName) return;
       setLoading(true);
-      const { data, error } = await supabase.from('products').select('*');
-      
-      if (!error && data) {
-        // Map the Postgres string array and sanitize price data
-        const formattedData = data.map((item) => ({
-          ...item,
-          // Fallback to 0 if price is missing to prevent .toLocaleString() crashes
-          price: item.price || 0,
-          originalPrice: item.original_price || 0,
-          original_price: item.original_price || 0,
-          // Extract image with fallbacks to avoid overriding valid images or colors
-          image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
-        }));
+
+      try {
+        const cacheKey = `cat_${categoryName.toLowerCase()}`;
+        const formattedData = await fetchWithCache(cacheKey, async () => {
+          // Query specific category with selected columns
+          const { data, error } = await supabase
+            .from('products')
+            .select('id, name, brand, category, price, original_price, images, image, stock, colors, variants, rating, reviews_count')
+            .ilike('category', categoryName.toLowerCase());
+
+          if (error || !data || data.length === 0) {
+            // Fallback: fetch all if category slug is aliased
+            const { data: allData } = await supabase
+              .from('products')
+              .select('id, name, brand, category, price, original_price, images, image, stock, colors, variants, rating, reviews_count');
+            return (allData || []).map((item: any) => ({
+              ...item,
+              price: item.price || 0,
+              originalPrice: item.original_price || 0,
+              original_price: item.original_price || 0,
+              image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
+            }));
+          }
+
+          return data.map((item: any) => ({
+            ...item,
+            price: item.price || 0,
+            originalPrice: item.original_price || 0,
+            original_price: item.original_price || 0,
+            image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
+          }));
+        }, 3 * 60 * 1000);
+
         setAllProducts(formattedData);
+      } catch (err) {
+        console.error('Error fetching category products:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
+
     fetchProducts();
-  }, []);
+  }, [categoryName]);
 
   // 2. Reset filters and scroll to top when changing category
   useEffect(() => {

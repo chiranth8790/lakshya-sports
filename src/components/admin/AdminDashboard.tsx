@@ -28,7 +28,7 @@ export default function AdminDashboard() {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('*');
+        .select('id, name, brand, category, price, stock, colors, variants');
 
       if (!error && data) {
         setProducts(data);
