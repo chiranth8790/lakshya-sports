@@ -10,7 +10,7 @@ import RetailHeader from './components/RetailHeader';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
-import WhatsAppWidget from './components/WhatsAppWidget';
+import AIAssistant from './components/ai-assistant/AIAssistant';
 
 // Code-Splitting: Lazy load pages to maximize page load speed and scalability
 const Home = lazy(() => import('./pages/Home'));
@@ -54,7 +54,7 @@ function RootLayout() {
         </Suspense>
       </main>
       <Footer />
-      <WhatsAppWidget variant="floating" />
+      <AIAssistant />
     </div>
   );
 }

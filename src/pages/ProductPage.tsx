@@ -46,6 +46,7 @@ interface Product {
   price: number;
   original_price?: number;
   description?: string;
+  specs?: string;
   images?: string[];
   stock: number;
   badge?: string;
@@ -831,10 +832,17 @@ export default function ProductPage() {
 
             {/* Description */}
             {product.description && (
-              <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 space-y-3">
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Description</h3>
+              <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+                  <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>Product Details & Specifications</span>
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                    Verified Authentic
+                  </span>
+                </div>
                 <div
-                  className="text-sm text-gray-700 leading-relaxed [&_strong]:font-black [&_strong]:text-gray-900 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h2]:text-base [&_h2]:font-black [&_h3]:text-sm [&_h3]:font-bold [&_p]:mb-2"
+                  className="text-xs text-gray-700 leading-relaxed [&_strong]:font-black [&_strong]:text-gray-900 [&_ul]:space-y-1.5 [&_h2]:text-sm [&_h2]:font-black [&_h2]:text-gray-900 [&_h3]:text-xs [&_h3]:font-bold [&_p]:mb-2 [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:py-2 [&_td]:px-3 [&_td]:text-xs [&_td]:border-b [&_td]:border-gray-100 [&_tr:last-child_td]:border-b-0"
                   dangerouslySetInnerHTML={{ __html: product.description }}
                 />
               </div>

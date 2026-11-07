@@ -106,26 +106,36 @@ export default function CategoryPage() {
       setLoading(true);
 
       try {
-        const cacheKey = `cat_${categoryName.toLowerCase()}`;
+        const cacheKey = `cat_v3_${categoryName.toLowerCase()}`;
         const formattedData = await fetchWithCache(cacheKey, async () => {
-          // Query specific category with selected columns
+          // Query specific category with valid columns (removed non-existent rating/reviews_count)
           const { data, error } = await supabase
             .from('products')
-            .select('id, name, brand, category, price, original_price, images, image, stock, colors, variants, rating, reviews_count')
+            .select('id, name, brand, category, series, tier, price, original_price, images, image, stock, colors, variants')
             .ilike('category', categoryName.toLowerCase());
 
-          if (error || !data || data.length === 0) {
-            // Fallback: fetch all if category slug is aliased
-            const { data: allData } = await supabase
+          if (error) {
+            console.error('Category fetch error:', error);
+            return [];
+          }
+
+          if (!data || data.length === 0) {
+            // Fallback: try substring match for category slugs (e.g. 'cricket' inside 'cricket-bats')
+            const { data: subData } = await supabase
               .from('products')
-              .select('id, name, brand, category, price, original_price, images, image, stock, colors, variants, rating, reviews_count');
-            return (allData || []).map((item: any) => ({
-              ...item,
-              price: item.price || 0,
-              originalPrice: item.original_price || 0,
-              original_price: item.original_price || 0,
-              image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
-            }));
+              .select('id, name, brand, category, series, tier, price, original_price, images, image, stock, colors, variants')
+              .ilike('category', `%${categoryName.toLowerCase()}%`);
+
+            if (subData && subData.length > 0) {
+              return subData.map((item: any) => ({
+                ...item,
+                price: item.price || 0,
+                originalPrice: item.original_price || 0,
+                original_price: item.original_price || 0,
+                image: item.image || (item.images && item.images.length > 0 ? item.images[0] : '') || (item.colors && item.colors[0] ? item.colors[0].image : '')
+              }));
+            }
+            return [];
           }
 
           return data.map((item: any) => ({
@@ -137,9 +147,10 @@ export default function CategoryPage() {
           }));
         }, 3 * 60 * 1000);
 
-        setAllProducts(formattedData);
+        setAllProducts(formattedData || []);
       } catch (err) {
         console.error('Error fetching category products:', err);
+        setAllProducts([]);
       } finally {
         setLoading(false);
       }
@@ -153,16 +164,18 @@ export default function CategoryPage() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     setSortBy('featured');
     setSelectedBrands([]);
-    setMaxPrice(25000);
+    setMaxPrice(35000);
     setMobileFilterOpen(false);
   }, [categoryName]);
 
   // 3. Use the fetched `allProducts` instead of the hardcoded `PRODUCTS`
-  const baseCategoryProducts = allProducts.filter(
-    (p) => p.category.toLowerCase() === (categoryName || '').toLowerCase()
-  );
+  const baseCategoryProducts = allProducts.filter((p) => {
+    const pCat = (p.category || '').toLowerCase();
+    const targetCat = (categoryName || '').toLowerCase();
+    return pCat === targetCat || pCat.includes(targetCat) || targetCat.includes(pCat);
+  });
 
-  const availableBrands = Array.from(new Set(baseCategoryProducts.map((p) => p.brand)));
+  const availableBrands = Array.from(new Set(baseCategoryProducts.map((p) => p.brand).filter(Boolean)));
 
   const toggleBrand = (brand: string) => {
     setSelectedBrands((prev) =>
@@ -170,17 +183,15 @@ export default function CategoryPage() {
     );
   };
 
- const filteredProducts = baseCategoryProducts
+  const filteredProducts = baseCategoryProducts
     .filter((product) => {
       const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(product.brand);
-      const matchesPrice = product.price <= maxPrice;
-      const isInStock = product.stock > 0; // NEW: Check inventory
-      
-      return matchesBrand && matchesPrice && isInStock;
+      const matchesPrice = Number(product.price) <= maxPrice;
+      return matchesBrand && matchesPrice;
     })
     .sort((a, b) => {
-      if (sortBy === 'price-low') return a.price - b.price;
-      if (sortBy === 'price-high') return b.price - a.price;
+      if (sortBy === 'price-low') return Number(a.price) - Number(b.price);
+      if (sortBy === 'price-high') return Number(b.price) - Number(a.price);
       return 0;
     });
 
@@ -322,21 +333,34 @@ export default function CategoryPage() {
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
                 <p className="text-sm font-black uppercase text-gray-800">
-                  No items match the selected filters
+                  {baseCategoryProducts.length === 0
+                    ? `New ${formattedTitle} Stock Arriving Soon!`
+                    : 'No items match the selected filters'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1 mb-4">
-                  Adjust price limit or remove brand restrictions.
+                  {baseCategoryProducts.length === 0
+                    ? `We source directly from official distributors (Yonex, Victor, SS). Contact our Bangalore stores or chat with our AI coach for custom orders.`
+                    : 'Adjust price limit or remove brand restrictions.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedBrands([]);
-                    setMaxPrice(25000);
-                  }}
-                  className="px-4 py-2 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-wider"
-                >
-                  Reset Filters
-                </button>
+                {baseCategoryProducts.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBrands([]);
+                      setMaxPrice(35000);
+                    }}
+                    className="px-4 py-2 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-wider"
+                  >
+                    Reset Filters
+                  </button>
+                ) : (
+                  <Link
+                    to="/category/rackets"
+                    className="inline-block px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition shadow-xs"
+                  >
+                    Browse Badminton Rackets
+                  </Link>
+                )}
               </div>
             )}
 
