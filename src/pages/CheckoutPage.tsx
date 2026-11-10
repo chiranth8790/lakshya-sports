@@ -335,7 +335,7 @@ export default function CheckoutPage() {
         toastError('Razorpay is loading or blocked by an adblocker. You can choose Cash on Delivery.');
         return;
       }
-      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TuZm0ssvj8dZ6j';
+      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
       const options = {
         key: rzpKey,
         amount: Math.round(grandTotal * 100),

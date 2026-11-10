@@ -77,7 +77,7 @@ export default function CustomPaymentPortal({
       return;
     }
 
-    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TuZm0ssvj8dZ6j';
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
 
     const options = {
       key: rzpKey,
