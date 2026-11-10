@@ -16,16 +16,44 @@ import {
   X,
   Printer,
   MapPin,
-  Edit2
+  Edit2,
+  Loader2,
+  Store
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
-import CustomPaymentPortal from '../components/checkout/CustomPaymentPortal';
+import CustomPaymentPortal, { type PaymentMethodType } from '../components/checkout/CustomPaymentPortal';
+
+
+function ProductThumbnail({ src, alt }: { src?: string; alt: string }) {
+  const [imgError, setImgError] = useState(!src);
+
+  if (imgError || !src) {
+    return (
+      <div className="w-14 h-14 rounded-xl border border-gray-200 bg-gray-50 flex flex-col items-center justify-center p-1 text-center shrink-0">
+        <Package className="w-5 h-5 text-gray-400" />
+        <span className="text-[7px] font-black uppercase text-gray-400 tracking-tight mt-0.5 truncate max-w-full">
+          Lakshya
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setImgError(true)}
+      className="w-14 h-14 object-contain rounded-xl border border-gray-100 p-1 bg-white shrink-0"
+    />
+  );
+}
 
 interface OrderItem {
   id: string;
   name: string;
   price: number;
   image: string;
+  images?: string[];
   selectedVariant?: string | null;
   selectedColor?: string | null;
   quantity: number;
@@ -85,6 +113,8 @@ export default function CheckoutPage() {
   // Checkout Multi-Step: Step 1 = Shipping, Step 2 = Custom Payment
   const [checkoutStep, setCheckoutStep] = useState<'shipping' | 'payment'>('shipping');
   const [activeOrderId] = useState(() => `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodType>('razorpay');
+  const [pickupStore, setPickupStore] = useState('Chikkalasandra Flagship Store (South Bengaluru)');
   const [confirmedPaymentDetails, setConfirmedPaymentDetails] = useState<{
     paymentMethod: string;
     paymentId?: string;
@@ -296,6 +326,64 @@ export default function CheckoutPage() {
       return false;
     }
     return true;
+  };
+
+  
+  const handleTriggerPayment = () => {
+    if (selectedPaymentMethod === 'razorpay') {
+      if (typeof (window as any).Razorpay === 'undefined') {
+        toastError('Razorpay is loading or blocked by an adblocker. You can choose Cash on Delivery.');
+        return;
+      }
+      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TuZm0ssvj8dZ6j';
+      const options = {
+        key: rzpKey,
+        amount: Math.round(grandTotal * 100),
+        currency: 'INR',
+        name: 'Lakshya Sports',
+        description: `Order ${activeOrderId}`,
+        image: '/website-logo.png',
+        prefill: {
+          name: formData.fullName,
+          email: formData.email,
+          contact: formData.phone
+        },
+        theme: {
+          color: '#dc2626'
+        },
+        handler: async function (response: any) {
+          await finalizeOrder({
+            paymentMethod: 'card',
+            paymentId: response.razorpay_payment_id,
+            status: 'Paid'
+          });
+        }
+      };
+      try {
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', function (resp: any) {
+          toastError(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
+        });
+        rzp.open();
+      } catch (e: any) {
+        toastError('Unable to open payment modal. Please try Cash on Delivery.');
+      }
+    } else if (selectedPaymentMethod === 'cod') {
+      finalizeOrder({
+        paymentMethod: 'cod',
+        status: 'Processing'
+      });
+    } else if (selectedPaymentMethod === 'store_pickup') {
+      finalizeOrder({
+        paymentMethod: 'pay_at_store',
+        pickupStore: pickupStore,
+        status: 'Processing'
+      });
+    } else if (selectedPaymentMethod === 'upi_direct') {
+      const elem = document.querySelector('input[placeholder*="430129847120"]');
+      if (elem) (elem as HTMLElement).focus();
+      toastError('Please enter your 12-digit UPI reference number to confirm direct payment.');
+    }
   };
 
   const handleProceedToPayment = (e?: React.FormEvent) => {
@@ -708,7 +796,11 @@ export default function CheckoutPage() {
                   customerPhone={formData.phone}
                   customerEmail={formData.email}
                   isSubmitting={isSubmitting}
+                  selectedMethod={selectedPaymentMethod}
+                  onMethodChange={setSelectedPaymentMethod}
                   onPaymentComplete={finalizeOrder}
+                  pickupStore={pickupStore}
+                  onPickupStoreChange={setPickupStore}
                 />
               </div>
             )}
@@ -734,10 +826,9 @@ export default function CheckoutPage() {
               <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto pr-1">
                 {checkoutItems.map((item, index) => (
                   <div key={index} className="py-3 flex items-center gap-3">
-                    <img
-                      src={item.image}
+                    <ProductThumbnail
+                      src={item.image || (item.images && item.images[0]) || ''}
                       alt={item.name}
-                      className="w-14 h-14 object-contain rounded-lg border border-gray-100 p-1 bg-white shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <h4 className="text-xs font-bold text-gray-900 truncate">{item.name}</h4>
@@ -874,15 +965,34 @@ export default function CheckoutPage() {
                 </button>
               ) : (
                 <div className="mt-6 space-y-3">
-                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-950 text-xs">
-                    <p className="font-bold uppercase tracking-wider text-[10px] text-amber-900 flex items-center gap-1.5 mb-1">
-                      <Lock className="w-3.5 h-3.5 text-amber-600" />
-                      Select Payment on Left
-                    </p>
-                    <p className="text-[11px] text-amber-800 leading-relaxed">
-                      Choose Direct UPI QR (0% commission), Credit/Debit Card, or Cash on Delivery (COD) to confirm.
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleTriggerPayment}
+                    className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg cursor-pointer active:scale-[0.99]"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Processing Order...
+                      </>
+                    ) : selectedPaymentMethod === 'razorpay' ? (
+                      <>
+                        <Lock className="w-4 h-4" /> Pay ?{grandTotal.toLocaleString('en-IN')} with Razorpay
+                      </>
+                    ) : selectedPaymentMethod === 'cod' ? (
+                      <>
+                        <Truck className="w-4 h-4" /> Place Order ? COD (?{grandTotal.toLocaleString('en-IN')})
+                      </>
+                    ) : selectedPaymentMethod === 'store_pickup' ? (
+                      <>
+                        <Store className="w-4 h-4" /> Reserve for Store Pickup
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" /> Confirm Direct UPI (?{grandTotal.toLocaleString('en-IN')})
+                      </>
+                    )}
+                  </button>
 
                   <button
                     type="button"
@@ -890,9 +1000,9 @@ export default function CheckoutPage() {
                       setCheckoutStep('shipping');
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold h-11 rounded-xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold h-10 rounded-xl uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Edit Delivery Details
+                    <ArrowLeft className="w-3.5 h-3.5" /> Edit Delivery Address
                   </button>
                 </div>
               )}
