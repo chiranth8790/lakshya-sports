@@ -434,9 +434,12 @@ export default function CheckoutPage() {
         },
         items: checkoutItems,
         subtotal,
+        discount_amount: discountAmount || 0,
+        coupon_code: appliedCoupon?.code || null,
         shipping_fee: shippingFee,
         total_amount: grandTotal,
         payment_method: details.paymentMethod,
+        payment_id: details.paymentId || null,
         status: details.status,
         created_at: new Date().toISOString()
       };
