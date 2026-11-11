@@ -318,7 +318,7 @@ export default function CheckoutPage() {
   };
 
   // Open Razorpay Standard Checkout
-  const openRazorpay = () => {
+  const openRazorpay = async () => {
     if (typeof (window as any).Razorpay === 'undefined') {
       toastError('Razorpay payment gateway is loading. Please try again in a moment or select Cash on Delivery.');
       return;
@@ -330,37 +330,55 @@ export default function CheckoutPage() {
       return;
     }
 
-    const options: any = {
-      key: rzpKey,
-      amount: Math.round(grandTotal * 100),
-      currency: 'INR',
-      name: 'Lakshya Sports',
-      description: `Order ${activeOrderId}`,
-      image: '/website-logo.png',
-      prefill: {
-        name: formData.fullName,
-        email: formData.email,
-        contact: formData.phone,
-      },
-      theme: {
-        color: '#dc2626',
-      },
-      handler: async function (response: any) {
-        await finalizeOrder({
-          paymentMethod: 'card',
-          paymentId: response.razorpay_payment_id,
-          status: 'Paid',
-        });
-      },
-      modal: {
-        ondismiss: function () {
-          setIsSubmitting(false);
-        },
-      },
-    };
+    setIsSubmitting(true);
 
     try {
-      setIsSubmitting(true);
+      // 1. Create authenticated server-side Razorpay Order via Supabase Edge Function
+      let razorpayOrderId: string | undefined;
+      try {
+        const { data: orderData, error: orderError } = await supabase.functions.invoke(
+          'create-razorpay-order',
+          { body: { amount: Math.round(grandTotal * 100) } }
+        );
+        if (!orderError && orderData && orderData.id) {
+          razorpayOrderId = orderData.id;
+        } else if (orderError) {
+          console.warn('Razorpay order creation notice:', orderError);
+        }
+      } catch (err) {
+        console.warn('Edge function invoke error:', err);
+      }
+
+      const options: any = {
+        key: rzpKey,
+        amount: Math.round(grandTotal * 100),
+        currency: 'INR',
+        name: 'Lakshya Sports',
+        description: `Order ${activeOrderId}`,
+        image: '/website-logo.png',
+        ...(razorpayOrderId ? { order_id: razorpayOrderId } : {}),
+        prefill: {
+          name: formData.fullName,
+          email: formData.email,
+          contact: formData.phone,
+        },
+        theme: {
+          color: '#dc2626',
+        },
+        handler: async function (response: any) {
+          await finalizeOrder({
+            paymentMethod: 'card',
+            paymentId: response.razorpay_payment_id,
+            status: 'Paid',
+          });
+        },
+        modal: {
+          ondismiss: function () {
+            setIsSubmitting(false);
+          },
+        },
+      };
+
       const rzp = new (window as any).Razorpay(options);
       rzp.on('payment.failed', function (resp: any) {
         toastError(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
@@ -410,14 +428,15 @@ export default function CheckoutPage() {
           city: formData.city,
           state: formData.state,
           pincode: formData.pincode,
+          payment_id: details.paymentId || null,
+          discount_amount: discountAmount || 0,
+          coupon_code: appliedCoupon?.code || null,
         },
         items: checkoutItems,
         subtotal,
-        discount_amount: discountAmount,
         shipping_fee: shippingFee,
         total_amount: grandTotal,
         payment_method: details.paymentMethod,
-        payment_id: details.paymentId || null,
         status: details.status,
         created_at: new Date().toISOString()
       };

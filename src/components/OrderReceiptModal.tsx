@@ -19,7 +19,7 @@ export default function OrderReceiptModal({ order, isOpen, onClose }: OrderRecei
 
   // GST Calculation (18% GST included in retail price: CGST 9% + SGST 9%)
   const subtotalValue = Number(order.subtotal || order.total_amount || 0);
-  const discountValue = Number(order.discount_amount || 0);
+  const discountValue = Number(order.discount_amount || order.shipping_address?.discount_amount || 0);
   const taxableNet = Math.max(0, subtotalValue - discountValue);
   const baseTaxableAmount = Math.round(taxableNet / 1.18);
   const totalGstAmount = taxableNet - baseTaxableAmount;
@@ -171,10 +171,10 @@ export default function OrderReceiptModal({ order, isOpen, onClose }: OrderRecei
                   ₹{Number(order.subtotal || order.total_amount).toLocaleString('en-IN')}
                 </span>
               </div>
-              {order.discount_amount && Number(order.discount_amount) > 0 && (
+              {discountValue > 0 && (
                 <div className="flex justify-between text-emerald-600 font-bold">
                   <span>Coupon Discount:</span>
-                  <span className="font-mono">−₹{Number(order.discount_amount).toLocaleString('en-IN')}</span>
+                  <span className="font-mono">−₹{discountValue.toLocaleString('en-IN')}</span>
                 </div>
               )}
               <div className="flex justify-between text-gray-600">
