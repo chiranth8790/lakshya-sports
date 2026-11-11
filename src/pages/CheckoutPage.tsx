@@ -18,9 +18,19 @@ import {
   Loader2,
   CreditCard,
   Banknote,
-  MapPin
+  MapPin,
+  Zap,
+  Clock
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
+import {
+  getDeliveryEstimate,
+  getSavedPincode,
+  saveUserPincode,
+  ShippingEstimate,
+  ShippingMode,
+  SHIPROCKET_CHANNEL_ID
+} from '../utils/shippingService';
 
 function ProductThumbnail({ src, alt }: { src?: string; alt: string }) {
   const [imgError, setImgError] = useState(!src);
@@ -58,8 +68,8 @@ interface OrderItem {
 }
 
 const DEFAULT_COUPONS = [
-  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, minOrderValue: 1000, usageCount: 0, expiry: '2026-12-31', active: true },
-  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, minOrderValue: 2000, usageCount: 0, expiry: '2026-10-15', active: true },
+  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, minOrderValue: 1000, usageCount: 0, expiry: '2026-12-31', active: true, showInDashboard: true },
+  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, minOrderValue: 2000, usageCount: 0, expiry: '2026-10-15', active: true, showInDashboard: true },
 ];
 
 export default function CheckoutPage() {
@@ -85,15 +95,24 @@ export default function CheckoutPage() {
   const checkoutItems: OrderItem[] = directItem ? [directItem] : (cart || []);
 
   // Form State
+  const initialSavedPin = getSavedPincode() || '';
+  const initialEstimate = getDeliveryEstimate(initialSavedPin);
+
   const [formData, setFormData] = useState({
     fullName: profile?.full_name || '',
     email: user?.email || '',
     phone: profile?.phone_number || '',
     address: '',
-    city: '',
+    city: initialSavedPin.startsWith('560') ? 'Bengaluru' : '',
     state: 'Karnataka',
-    pincode: '',
+    pincode: initialSavedPin,
   });
+
+  // Shiprocket Shipping State
+  const [shippingMode, setShippingMode] = useState<ShippingMode>(
+    initialEstimate?.isInstantEligible ? 'instant' : 'standard'
+  );
+  const [deliveryEstimate, setDeliveryEstimate] = useState<ShippingEstimate | null>(initialEstimate);
 
   // Payment Method Selection: 'online' (Razorpay) or 'cod' (Cash on Delivery)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cod'>('online');
@@ -128,12 +147,12 @@ export default function CheckoutPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter((c: any) => c.active);
+          return parsed.filter((c: any) => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true));
         }
       }
-      return DEFAULT_COUPONS;
+      return DEFAULT_COUPONS.filter((c: any) => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true));
     } catch {
-      return DEFAULT_COUPONS;
+      return DEFAULT_COUPONS.filter((c: any) => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true));
     }
   });
   const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
@@ -149,7 +168,9 @@ export default function CheckoutPage() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setAvailableCoupons(parsed.filter((c: any) => c.active));
+            setAvailableCoupons(
+              parsed.filter((c: any) => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true))
+            );
           }
         }
       } catch {
@@ -175,6 +196,9 @@ export default function CheckoutPage() {
             usageCount: Number(c.usage_count) || 0,
             expiry: c.expiry || 'No Expiry',
             active: c.active ?? true,
+            showInDashboard: c.show_in_dashboard !== undefined 
+              ? Boolean(c.show_in_dashboard) 
+              : (c.showInDashboard !== undefined ? Boolean(c.showInDashboard) : true),
           }));
 
           setAvailableCoupons(prev => {
@@ -183,12 +207,9 @@ export default function CheckoutPage() {
             prev.forEach(c => {
               if (!map.has(c.code)) map.set(c.code, c);
             });
-            const merged = Array.from(map.values()).filter(c => c.active);
-            try {
-              localStorage.setItem('lakshya_coupons', JSON.stringify(merged));
-            } catch {
-              // ignore
-            }
+            const merged = Array.from(map.values()).filter(
+              c => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true)
+            );
             return merged;
           });
         }
@@ -239,7 +260,7 @@ export default function CheckoutPage() {
     toastSuccess(`Coupon ${coupon.code} applied successfully!`);
   };
 
-  const handleApplyManualCoupon = () => {
+  const handleApplyManualCoupon = async () => {
     setCouponError(null);
     const cleaned = couponInput.trim().toUpperCase();
     if (!cleaned) {
@@ -247,7 +268,7 @@ export default function CheckoutPage() {
       return;
     }
     
-    let pool = availableCoupons;
+    let pool: any[] = [];
     try {
       const stored = localStorage.getItem('lakshya_coupons');
       if (stored) {
@@ -260,9 +281,40 @@ export default function CheckoutPage() {
       // ignore
     }
 
-    const foundCoupon = pool.find(
+    if (pool.length === 0) {
+      pool = DEFAULT_COUPONS;
+    }
+
+    let foundCoupon = pool.find(
       (c) => String(c.code).trim().toUpperCase() === cleaned
     );
+
+    // If not found in localStorage pool, check Supabase directly
+    if (!foundCoupon) {
+      try {
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .ilike('code', cleaned)
+          .maybeSingle();
+
+        if (!error && data) {
+          foundCoupon = {
+            id: String(data.id),
+            code: String(data.code).toUpperCase().trim(),
+            type: data.type,
+            value: Number(data.value),
+            minOrderValue: data.min_order_value ? Number(data.min_order_value) : undefined,
+            usageCount: Number(data.usage_count) || 0,
+            expiry: data.expiry || 'No Expiry',
+            active: data.active ?? true,
+            showInDashboard: data.show_in_dashboard ?? true,
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
     
     if (!foundCoupon) {
       setCouponError(`Coupon code "${cleaned}" is invalid.`);

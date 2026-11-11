@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Package, Heart, LogOut, ArrowLeft, Loader2, RefreshCw, ChevronRight, X, MapPin, Receipt, CheckCircle2, Printer } from 'lucide-react';
+import { User, Package, Heart, LogOut, ArrowLeft, Loader2, RefreshCw, ChevronRight, X, MapPin, Receipt, CheckCircle2, Printer, Tag, Copy, Check } from 'lucide-react';
 import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +31,82 @@ export default function AccountPage() {
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
+
+  // User Dashboard Coupons State
+  const [dashboardCoupons, setDashboardCoupons] = useState<any[]>([]);
+  const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncCoupons = () => {
+      try {
+        const stored = localStorage.getItem('lakshya_coupons');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setDashboardCoupons(
+              parsed.filter((c: any) => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true))
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const loadDashboardCoupons = async () => {
+      syncCoupons();
+      try {
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('active', true);
+
+        if (!error && data && data.length > 0) {
+          const remoteMapped = data.map((c: any) => ({
+            id: String(c.id),
+            code: String(c.code).toUpperCase().trim(),
+            type: c.type,
+            value: Number(c.value),
+            minOrderValue: c.min_order_value ? Number(c.min_order_value) : undefined,
+            usageCount: Number(c.usage_count) || 0,
+            expiry: c.expiry || 'No Expiry',
+            active: c.active ?? true,
+            showInDashboard: c.show_in_dashboard !== undefined 
+              ? Boolean(c.show_in_dashboard) 
+              : (c.showInDashboard !== undefined ? Boolean(c.showInDashboard) : true),
+          }));
+
+          setDashboardCoupons(prev => {
+            const map = new Map<string, any>();
+            remoteMapped.forEach(c => map.set(c.code, c));
+            prev.forEach(c => {
+              if (!map.has(c.code)) map.set(c.code, c);
+            });
+            return Array.from(map.values()).filter(
+              c => c.active && (c.showInDashboard ?? c.show_in_dashboard ?? true)
+            );
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadDashboardCoupons();
+
+    window.addEventListener('lakshya_coupons_updated', loadDashboardCoupons);
+    window.addEventListener('storage', syncCoupons);
+    return () => {
+      window.removeEventListener('lakshya_coupons_updated', loadDashboardCoupons);
+      window.removeEventListener('storage', syncCoupons);
+    };
+  }, []);
+
+  const handleCopyCoupon = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCoupon(code);
+    setTimeout(() => setCopiedCoupon(null), 2000);
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -147,6 +223,61 @@ export default function AccountPage() {
               </div>
               <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-red-600 transition-transform group-hover:translate-x-1" />
             </Link>
+
+            {/* User Dashboard Coupons & Offers Card */}
+            {dashboardCoupons.length > 0 && (
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xs">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                    <Tag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase">Coupons & Offers</h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      {dashboardCoupons.length} Active {dashboardCoupons.length === 1 ? 'Promo' : 'Promos'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {dashboardCoupons.map((coupon) => (
+                    <div
+                      key={coupon.id}
+                      className="p-3.5 bg-gray-50 hover:bg-red-50/20 rounded-2xl border border-gray-100 transition-colors flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-xs text-gray-900 uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-gray-200">
+                            {coupon.code}
+                          </span>
+                          <span className="text-[11px] font-black text-emerald-600">
+                            {coupon.type === 'PERCENTAGE' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-semibold mt-1 truncate">
+                          {coupon.minOrderValue ? `Orders above ₹${coupon.minOrderValue.toLocaleString('en-IN')}` : 'No minimum order'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCoupon(coupon.code)}
+                        className="px-2.5 py-1.5 bg-black hover:bg-neutral-800 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition shrink-0 flex items-center gap-1 active:scale-95 cursor-pointer"
+                        title="Copy coupon code"
+                      >
+                        {copiedCoupon === coupon.code ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" /> Copy
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Order History */}

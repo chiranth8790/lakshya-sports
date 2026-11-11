@@ -26,6 +26,7 @@ import WhatsAppWidget from '../components/WhatsAppWidget';
 import SizeGuideModal from '../components/SizeGuideModal';
 import ProductReviews from '../components/ProductReviews';
 import { fetchWithCache } from '../utils/productCache';
+import PincodeEstimator from '../components/shipping/PincodeEstimator';
 
 interface Variant {
   name: string;
@@ -813,6 +814,9 @@ export default function ProductPage() {
                 message={`Hi Lakshya Sports, I am looking at ${product.name} on your website. Can you help me with custom specs/other options?`}
               />
             </div>
+
+            {/* Instant Delivery & Pincode Checker (Shiprocket Quick) */}
+            <PincodeEstimator />
 
             {/* Delivery strip */}
             <div className="grid grid-cols-3 gap-3 py-4 border-y border-gray-100">

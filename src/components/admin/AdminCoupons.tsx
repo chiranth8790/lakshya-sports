@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Tag, Trash2, Copy, Check, Power } from 'lucide-react';
+import { Plus, Tag, Trash2, Copy, Check, Power, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../library/supabase';
 import { useToast } from '../../context/ToastContext';
 
@@ -12,11 +12,12 @@ interface Coupon {
   usageCount: number;
   expiry: string;
   active: boolean;
+  showInDashboard?: boolean;
 }
 
 const DEFAULT_COUPONS: Coupon[] = [
-  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, minOrderValue: 1000, usageCount: 0, expiry: '2026-12-31', active: true },
-  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, minOrderValue: 2000, usageCount: 0, expiry: '2026-10-15', active: true },
+  { id: '1', code: 'WELCOME10', type: 'PERCENTAGE', value: 10, minOrderValue: 1000, usageCount: 0, expiry: '2026-12-31', active: true, showInDashboard: true },
+  { id: '2', code: 'SPORT500', type: 'FIXED', value: 500, minOrderValue: 2000, usageCount: 0, expiry: '2026-10-15', active: true, showInDashboard: true },
 ];
 
 export default function AdminCoupons() {
@@ -46,6 +47,7 @@ export default function AdminCoupons() {
   const [minOrderValue, setMinOrderValue] = useState('');
   const [expiry, setExpiry] = useState('');
   const [active, setActive] = useState(true);
+  const [showInDashboard, setShowInDashboard] = useState(true);
 
   // Helper to persist to localStorage & broadcast event across website
   const persistCoupons = (newList: Coupon[]) => {
@@ -80,6 +82,9 @@ export default function AdminCoupons() {
           usageCount: Number(c.usage_count) || 0,
           expiry: c.expiry || 'No Expiry',
           active: c.active ?? true,
+          showInDashboard: c.show_in_dashboard !== undefined 
+            ? Boolean(c.show_in_dashboard) 
+            : (c.showInDashboard !== undefined ? Boolean(c.showInDashboard) : true),
         }));
 
         setCoupons(prev => {
@@ -140,6 +145,30 @@ export default function AdminCoupons() {
     }
   };
 
+  const handleToggleDashboard = async (id: string) => {
+    const updated = coupons.map((c) =>
+      c.id === id ? { ...c, showInDashboard: !(c.showInDashboard ?? true) } : c
+    );
+    setCoupons(updated);
+    persistCoupons(updated);
+
+    const target = updated.find((c) => c.id === id);
+    toastSuccess(
+      `Coupon ${target?.code} is now ${target?.showInDashboard ? 'Visible in User Dashboard' : 'Hidden from User Dashboard'}`
+    );
+
+    try {
+      if (target) {
+        await supabase
+          .from('coupons')
+          .update({ show_in_dashboard: target.showInDashboard })
+          .eq('id', id);
+      }
+    } catch (err) {
+      console.warn('Supabase show_in_dashboard notice:', err);
+    }
+  };
+
   const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = code.toUpperCase().trim();
@@ -168,6 +197,7 @@ export default function AdminCoupons() {
       usageCount: 0,
       expiry: expiry || 'No Expiry',
       active,
+      showInDashboard,
     };
 
     // Replace if exists, else prepend
@@ -188,13 +218,15 @@ export default function AdminCoupons() {
     setValue('');
     setMinOrderValue('');
     setExpiry('');
+    setActive(true);
+    setShowInDashboard(true);
     setActiveTab('list');
 
-    toastSuccess(`Coupon "${cleanCode}" created & activated across the store!`);
+    toastSuccess(`Coupon "${cleanCode}" created & saved across the store!`);
 
     // Sync to Supabase in the background
     try {
-      await supabase.from('coupons').upsert([{
+      const { error } = await supabase.from('coupons').upsert([{
         id: newCoupon.id,
         code: newCoupon.code,
         type: newCoupon.type,
@@ -202,8 +234,21 @@ export default function AdminCoupons() {
         min_order_value: newCoupon.minOrderValue || null,
         usage_count: 0,
         expiry: newCoupon.expiry,
-        active: newCoupon.active
+        active: newCoupon.active,
+        show_in_dashboard: newCoupon.showInDashboard,
       }]);
+      if (error) {
+        await supabase.from('coupons').upsert([{
+          id: newCoupon.id,
+          code: newCoupon.code,
+          type: newCoupon.type,
+          value: newCoupon.value,
+          min_order_value: newCoupon.minOrderValue || null,
+          usage_count: 0,
+          expiry: newCoupon.expiry,
+          active: newCoupon.active,
+        }]);
+      }
     } catch {
       // Supabase table not created yet; local storage guarantees persistence
     }
@@ -242,6 +287,7 @@ export default function AdminCoupons() {
                     <th className="p-4">Min. Order</th>
                     <th className="p-4">Usage</th>
                     <th className="p-4">Expiry</th>
+                    <th className="p-4">In User Dashboard</th>
                     <th className="p-4">Status</th>
                     <th className="p-4 text-right">Actions</th>
                   </tr>
@@ -274,13 +320,28 @@ export default function AdminCoupons() {
                       <td className="p-4">
                         <button
                           type="button"
-                          onClick={() => handleToggleActive(coupon.id)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
-                            coupon.active 
-                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          onClick={() => handleToggleDashboard(coupon.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition cursor-pointer border ${
+                            coupon.showInDashboard !== false 
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                              : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
                           }`}
-                          title="Click to toggle Active / Disabled"
+                          title="Click to toggle display on User Dashboard and Checkout Offers"
+                        >
+                          {coupon.showInDashboard !== false ? <Eye className="w-3 h-3 text-blue-600" /> : <EyeOff className="w-3 h-3 text-gray-400" />}
+                          <span>{coupon.showInDashboard !== false ? 'Enabled' : 'Hidden'}</span>
+                        </button>
+                      </td>
+                      <td className="p-4">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleActive(coupon.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition cursor-pointer border ${
+                            coupon.active 
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' 
+                              : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                          }`}
+                          title="Click to toggle Active / Disabled for checkout application"
                         >
                           <Power className="w-3 h-3" />
                           <span>{coupon.active ? 'Active' : 'Disabled'}</span>
@@ -378,22 +439,40 @@ export default function AdminCoupons() {
             </div>
           </div>
 
-          <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                className="w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
-              />
-              <span className="text-xs font-bold text-gray-900 uppercase">Active Immediately</span>
-            </label>
+          <div className="border-t border-gray-100 pt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-6">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={(e) => setActive(e.target.checked)}
+                  className="w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-gray-900 uppercase block">Active Coupon</span>
+                  <span className="text-[10px] text-gray-400 font-medium">Usable at checkout</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showInDashboard}
+                  onChange={(e) => setShowInDashboard(e.target.checked)}
+                  className="w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-gray-900 uppercase block">Enable in User Dashboard</span>
+                  <span className="text-[10px] text-gray-400 font-medium">Publicly visible to users in Account & Checkout offers</span>
+                </div>
+              </label>
+            </div>
 
             <button
               type="submit"
               className="px-6 py-2.5 bg-black hover:bg-neutral-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition cursor-pointer"
             >
-              Create & Activate Coupon
+              Create Coupon
             </button>
           </div>
         </form>
