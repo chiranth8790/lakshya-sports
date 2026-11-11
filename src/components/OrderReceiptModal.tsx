@@ -109,6 +109,11 @@ export default function OrderReceiptModal({ order, isOpen, onClose }: OrderRecei
             <p className="text-gray-600 mt-0.5">
               {order.shipping_address?.street}, {order.shipping_address?.city}, {order.shipping_address?.state} - {order.shipping_address?.pincode}
             </p>
+            {order.shipping_address?.courier_partner && (
+              <p className="text-[11px] font-bold text-gray-700 mt-1">
+                Shipment: <span className="text-red-600 font-black">{order.shipping_address.courier_partner}</span> • {order.shipping_address.delivery_eta}
+              </p>
+            )}
           </div>
 
           {/* Items Table with HSN */}

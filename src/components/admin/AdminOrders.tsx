@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ShoppingBag, Loader2 } from 'lucide-react';
+import { Search, ShoppingBag, Loader2, Zap, Truck, ExternalLink } from 'lucide-react';
 import { supabase } from '../../library/supabase';
 
 interface Order {
@@ -7,10 +7,12 @@ interface Order {
   order_id: string;
   customer_name: string;
   customer_email: string;
+  customer_phone?: string;
   created_at: string;
   total_amount: number;
   items: any[];
   status: string;
+  shipping_address?: any;
 }
 
 export default function AdminOrders() {
@@ -85,8 +87,22 @@ export default function AdminOrders() {
 
   return (
     <div>
-      <h1 className="text-2xl font-black text-gray-900 uppercase mb-2">Orders & Fulfillment</h1>
-      <p className="text-xs text-gray-500 font-semibold mb-6">Manage customer orders, shipments, and payment status.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 uppercase mb-1">Orders & Fulfillment</h1>
+          <p className="text-xs text-gray-500 font-semibold">Manage customer orders, shipments, and payment status.</p>
+        </div>
+        <a
+          href="https://app.shiprocket.in/orders"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+        >
+          <Zap className="w-3.5 h-3.5 text-purple-600 fill-purple-600" />
+          <span>Shiprocket Hub (Ch #12918420)</span>
+          <ExternalLink className="w-3 h-3 text-purple-500" />
+        </a>
+      </div>
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -144,7 +160,16 @@ export default function AdminOrders() {
                     <td className="p-4 font-black text-gray-900 whitespace-nowrap">{order.order_id}</td>
                     <td className="p-4">
                       <div className="font-bold whitespace-nowrap">{order.customer_name}</div>
-                      <div className="text-[10px] text-gray-400 font-medium">{order.customer_email}</div>
+                      <div className="text-[10px] text-gray-400 font-medium">{order.customer_email || order.customer_phone}</div>
+                      {order.shipping_address?.shipping_mode === 'instant' ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded mt-1">
+                          <Zap className="w-2.5 h-2.5 fill-amber-600 text-amber-600" /> Instant 2-Hr Quick
+                        </span>
+                      ) : order.shipping_address?.pincode ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-gray-500 mt-1">
+                          <Truck className="w-2.5 h-2.5 text-gray-400" /> PIN: {order.shipping_address.pincode}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-500 whitespace-nowrap">
                       {new Date(order.created_at).toLocaleDateString('en-IN', {

@@ -19,18 +19,16 @@ import {
   CreditCard,
   Banknote,
   MapPin,
-  Zap,
-  Clock
+  Zap
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
 import {
   getDeliveryEstimate,
   getSavedPincode,
   saveUserPincode,
-  ShippingEstimate,
-  ShippingMode,
   SHIPROCKET_CHANNEL_ID
 } from '../utils/shippingService';
+import type { ShippingEstimate, ShippingMode } from '../utils/shippingService';
 
 function ProductThumbnail({ src, alt }: { src?: string; alt: string }) {
   const [imgError, setImgError] = useState(!src);
@@ -336,7 +334,31 @@ export default function CheckoutPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'pincode') {
+      const clean = value.replace(/\D/g, '').slice(0, 6);
+      setFormData((prev) => {
+        const next = { ...prev, pincode: clean };
+        if (clean.startsWith('560') && (!prev.city || prev.city.trim() === '')) {
+          next.city = 'Bengaluru';
+          next.state = 'Karnataka';
+        }
+        return next;
+      });
+      if (clean.length === 6) {
+        saveUserPincode(clean);
+        const est = getDeliveryEstimate(clean);
+        setDeliveryEstimate(est);
+        if (est?.isInstantEligible) {
+          setShippingMode('instant');
+        } else {
+          setShippingMode('standard');
+        }
+      } else {
+        setDeliveryEstimate(null);
+      }
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const validateShippingForm = () => {
@@ -480,6 +502,14 @@ export default function CheckoutPage() {
           city: formData.city,
           state: formData.state,
           pincode: formData.pincode,
+          shipping_mode: shippingMode,
+          delivery_eta: deliveryEstimate?.isInstantEligible && shippingMode === 'instant'
+            ? deliveryEstimate.instantETA
+            : (deliveryEstimate?.standardETA || '2–4 Business Days'),
+          courier_partner: deliveryEstimate?.isInstantEligible && shippingMode === 'instant'
+            ? 'Shiprocket Quick (Shadowfax / Dunzo Rider)'
+            : 'Shiprocket Express (Blue Dart / Delhivery)',
+          shiprocket_channel_id: SHIPROCKET_CHANNEL_ID,
           payment_id: details.paymentId || null,
           discount_amount: discountAmount || 0,
           coupon_code: appliedCoupon?.code || null,
@@ -595,9 +625,35 @@ export default function CheckoutPage() {
                 <span className="font-mono font-bold text-emerald-600">{confirmedPaymentDetails.paymentId}</span>
               </div>
             )}
+            <div className="flex justify-between">
+              <span className="text-gray-500">Delivery Speed</span>
+              <span className="font-bold text-gray-900 flex items-center gap-1">
+                {shippingMode === 'instant' ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                    <span>Instant in 60–120 Mins (Shiprocket Quick)</span>
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{deliveryEstimate?.standardETA || '2–4 Business Days'}</span>
+                  </>
+                )}
+              </span>
+            </div>
             <div className="flex justify-between pt-2 border-t border-gray-200">
               <span className="text-gray-500 font-bold">Total Amount</span>
               <span className="font-black text-gray-900 text-sm">₹{grandTotal.toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3.5 text-left mb-6 text-[11px] text-amber-900 flex items-start gap-2.5">
+            <Zap className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Shiprocket Live Tracking Shared to Mobile</p>
+              <p className="text-amber-800/80 mt-0.5">
+                Rider &amp; live GPS tracking updates will be delivered to <strong>{formData.phone}</strong> via WhatsApp &amp; SMS.
+              </p>
             </div>
           </div>
 
@@ -777,6 +833,92 @@ export default function CheckoutPage() {
                     className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
                   />
                 </div>
+
+                {/* Shiprocket Delivery Estimation & Speed Selector */}
+                {deliveryEstimate && (
+                  <div className="sm:col-span-2 pt-2 animate-in fade-in">
+                    {deliveryEstimate.isInstantEligible ? (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 bg-amber-500 text-black text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full tracking-wider shadow-2xs">
+                            <Zap className="w-3 h-3 fill-black text-black" /> Bangalore Hyperlocal Active
+                          </span>
+                          <span className="text-[11px] font-bold text-gray-500">Within 20 km of store</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {/* Option 1: Instant Quick Delivery */}
+                          <div
+                            onClick={() => setShippingMode('instant')}
+                            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                              shippingMode === 'instant'
+                                ? 'border-black bg-neutral-900 text-white shadow-md'
+                                : 'border-gray-200 bg-white hover:border-gray-300 text-gray-900'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black uppercase flex items-center gap-1.5">
+                                <Zap className={`w-3.5 h-3.5 ${shippingMode === 'instant' ? 'text-amber-400 fill-amber-400' : 'text-amber-500 fill-amber-500'}`} />
+                                Instant Delivery
+                              </span>
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                                shippingMode === 'instant' ? 'bg-amber-400 text-black' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                60–120 Mins
+                              </span>
+                            </div>
+                            <p className={`text-[11px] mt-1.5 ${shippingMode === 'instant' ? 'text-gray-300' : 'text-gray-500'}`}>
+                              Dispatched immediately via <strong>Shiprocket Quick</strong> bike rider from our Bangalore store.
+                            </p>
+                          </div>
+
+                          {/* Option 2: Standard Delivery */}
+                          <div
+                            onClick={() => setShippingMode('standard')}
+                            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                              shippingMode === 'standard'
+                                ? 'border-black bg-neutral-900 text-white shadow-md'
+                                : 'border-gray-200 bg-white hover:border-gray-300 text-gray-900'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black uppercase flex items-center gap-1.5">
+                                <Truck className={`w-3.5 h-3.5 ${shippingMode === 'standard' ? 'text-white' : 'text-gray-700'}`} />
+                                Standard Delivery
+                              </span>
+                              <span className={`text-[10px] font-bold ${
+                                shippingMode === 'standard' ? 'text-gray-300' : 'text-gray-600'
+                              }`}>
+                                Same Day / Next Day
+                              </span>
+                            </div>
+                            <p className={`text-[11px] mt-1.5 ${shippingMode === 'standard' ? 'text-gray-300' : 'text-gray-500'}`}>
+                              Dispatched via regular parcel courier.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Outside Bangalore */
+                      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3.5 flex items-start gap-3">
+                        <Truck className="w-5 h-5 text-gray-700 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase text-gray-900">
+                              Estimated Delivery: <span className="text-red-600">{deliveryEstimate.standardETA}</span>
+                            </span>
+                            <span className="text-[10px] font-bold text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200">
+                              {deliveryEstimate.city}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-1">
+                            Dispatched via <strong>{deliveryEstimate.standardCourier}</strong> (Shiprocket Channel #{deliveryEstimate.channelId}). Live tracking link will be sent via WhatsApp &amp; SMS.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </form>
           </div>
@@ -911,8 +1053,18 @@ export default function CheckoutPage() {
                 )}
                 
                 <div className="flex justify-between text-gray-500 items-center">
-                  <span className="flex items-center gap-1">
-                    <Truck className="w-3.5 h-3.5" /> Shipping
+                  <span className="flex items-center gap-1.5">
+                    {deliveryEstimate?.isInstantEligible && shippingMode === 'instant' ? (
+                      <span className="flex items-center gap-1 text-amber-600 font-bold">
+                        <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                        <span>Instant 2-Hr Delivery (Shiprocket Quick)</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-gray-500" />
+                        <span>Standard Shipping</span>
+                      </span>
+                    )}
                   </span>
                   {shippingFee === 0 ? (
                     <span className="font-bold text-green-600 uppercase text-[11px]">Free</span>

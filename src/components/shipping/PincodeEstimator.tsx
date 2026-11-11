@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Truck, Zap, MapPin, CheckCircle2, Clock, ShieldCheck } from 'lucide-react';
-import { getDeliveryEstimate, getSavedPincode, saveUserPincode, ShippingEstimate } from '../../utils/shippingService';
+import { getDeliveryEstimate, getSavedPincode, saveUserPincode } from '../../utils/shippingService';
+import type { ShippingEstimate } from '../../utils/shippingService';
 
 export default function PincodeEstimator() {
   const [pincode, setPincode] = useState('');

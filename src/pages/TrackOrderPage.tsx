@@ -8,6 +8,8 @@ import {
   AlertCircle, 
   MapPin, 
   Calendar,
+  Zap,
+  ExternalLink
 } from 'lucide-react';
 
 export default function TrackOrderPage() {
@@ -259,6 +261,34 @@ export default function TrackOrderPage() {
                     <span className="block">{order.shipping_address?.state} - {order.shipping_address?.pincode}</span>
                   </div>
                 </div>
+
+                {order.shipping_address?.courier_partner && (
+                  <div className="pt-3 border-t border-gray-200 mt-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Carrier Details</span>
+                    <div className="flex items-center gap-1.5 font-bold text-gray-900">
+                      {order.shipping_address.shipping_mode === 'instant' ? (
+                        <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                      ) : (
+                        <Truck className="w-3.5 h-3.5 text-blue-600" />
+                      )}
+                      <span>{order.shipping_address.courier_partner}</span>
+                    </div>
+                    {order.shipping_address.delivery_eta && (
+                      <p className="text-[11px] text-gray-500 mt-0.5">ETA: <strong>{order.shipping_address.delivery_eta}</strong></p>
+                    )}
+                    {order.tracking_url && (
+                      <a
+                        href={order.tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-red-700 mt-2 underline"
+                      >
+                        <span>Open Live Courier Tracking</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
