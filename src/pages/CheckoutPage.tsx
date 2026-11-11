@@ -14,10 +14,12 @@ import {
   ChevronRight,
   Tag,
   X,
-  Printer
+  Printer,
+  Loader2,
+  CreditCard,
+  Banknote
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
-import PaymentOptionsModal from '../components/checkout/PaymentOptionsModal';
 
 function ProductThumbnail({ src, alt }: { src?: string; alt: string }) {
   const [imgError, setImgError] = useState(!src);
@@ -65,6 +67,17 @@ export default function CheckoutPage() {
   const { user, profile } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
 
+  // Load Razorpay checkout script
+  useEffect(() => {
+    const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
+    if (!existing) {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
   // 1. Resolve Checkout Source: Buy Now single-item state takes priority over persistent cart
   const directItem: OrderItem | undefined = location.state?.directCheckoutItem;
   const isDirectCheckout = Boolean(directItem);
@@ -81,6 +94,9 @@ export default function CheckoutPage() {
     pincode: '',
   });
 
+  // Payment Method Selection: 'online' (Razorpay) or 'cod' (Cash on Delivery)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cod'>('online');
+
   // Re-sync form if user finishes loading
   useEffect(() => {
     if (user || profile) {
@@ -93,16 +109,12 @@ export default function CheckoutPage() {
     }
   }, [user, profile]);
 
-  // Payment Options Popup State
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [activeOrderId] = useState(() => `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`);
   const [confirmedPaymentDetails, setConfirmedPaymentDetails] = useState<{
     paymentMethod: string;
     paymentId?: string;
-    utrNumber?: string;
-    pickupStore?: string;
     status?: string;
-  }>({ paymentMethod: 'upi_direct' });
+  }>({ paymentMethod: 'card' });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -304,18 +316,78 @@ export default function CheckoutPage() {
     return true;
   };
 
+  // Open Razorpay Standard Checkout
+  const openRazorpay = () => {
+    if (typeof (window as any).Razorpay === 'undefined') {
+      toastError('Razorpay payment gateway is loading. Please try again in a moment or select Cash on Delivery.');
+      return;
+    }
+
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TuZm0ssvj8dZ6j';
+
+    const options: any = {
+      key: rzpKey,
+      amount: Math.round(grandTotal * 100),
+      currency: 'INR',
+      name: 'Lakshya Sports',
+      description: `Order ${activeOrderId}`,
+      image: '/website-logo.png',
+      prefill: {
+        name: formData.fullName,
+        email: formData.email,
+        contact: formData.phone,
+      },
+      theme: {
+        color: '#dc2626',
+      },
+      handler: async function (response: any) {
+        await finalizeOrder({
+          paymentMethod: 'card',
+          paymentId: response.razorpay_payment_id,
+          status: 'Paid',
+        });
+      },
+      modal: {
+        ondismiss: function () {
+          setIsSubmitting(false);
+        },
+      },
+    };
+
+    try {
+      setIsSubmitting(true);
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (resp: any) {
+        toastError(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
+        setIsSubmitting(false);
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Razorpay launch error:', err);
+      toastError('Unable to open Razorpay payment window. Please try Cash on Delivery.');
+      setIsSubmitting(false);
+    }
+  };
+
+  // Single Action Button Handler: Validates form and opens Razorpay or confirms COD
   const handleProceedToPayment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!validateShippingForm()) return;
-    setShowPaymentModal(true);
+
+    if (selectedPaymentMethod === 'online') {
+      openRazorpay();
+    } else {
+      finalizeOrder({
+        paymentMethod: 'cod',
+        status: 'Processing',
+      });
+    }
   };
 
   // Finalize order in Supabase with payment metadata
   const finalizeOrder = async (details: {
-    paymentMethod: 'upi_direct' | 'card' | 'cod' | 'pay_at_store';
+    paymentMethod: 'card' | 'cod';
     paymentId?: string;
-    utrNumber?: string;
-    pickupStore?: string;
     status: 'Paid' | 'Processing';
   }) => {
     if (checkoutItems.length === 0) return;
@@ -333,7 +405,6 @@ export default function CheckoutPage() {
           city: formData.city,
           state: formData.state,
           pincode: formData.pincode,
-          ...(details.pickupStore ? { pickup_store: details.pickupStore } : {})
         },
         items: checkoutItems,
         subtotal,
@@ -342,8 +413,6 @@ export default function CheckoutPage() {
         total_amount: grandTotal,
         payment_method: details.paymentMethod,
         payment_id: details.paymentId || null,
-        utr_number: details.utrNumber || null,
-        pickup_store: details.pickupStore || null,
         status: details.status,
         created_at: new Date().toISOString()
       };
@@ -400,7 +469,6 @@ export default function CheckoutPage() {
 
       setConfirmedPaymentDetails(details);
       setPlacedOrderId(activeOrderId);
-      setShowPaymentModal(false);
       setOrderComplete(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
@@ -439,28 +507,13 @@ export default function CheckoutPage() {
             <div className="flex justify-between">
               <span className="text-gray-500">Payment Mode</span>
               <span className="font-bold text-gray-900 uppercase">
-                {confirmedPaymentDetails.paymentMethod === 'upi_direct' ? 'Direct UPI (QR / App)' :
-                 confirmedPaymentDetails.paymentMethod === 'card' ? 'Credit / Debit Card' :
-                 confirmedPaymentDetails.paymentMethod === 'pay_at_store' ? 'Pay at Store' :
-                 'Cash on Delivery (COD)'}
+                {confirmedPaymentDetails.paymentMethod === 'card' ? 'Online Payment (Razorpay)' : 'Cash on Delivery (COD)'}
               </span>
             </div>
-            {confirmedPaymentDetails.utrNumber && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">UPI Ref (UTR)</span>
-                <span className="font-mono font-bold text-emerald-600">{confirmedPaymentDetails.utrNumber}</span>
-              </div>
-            )}
             {confirmedPaymentDetails.paymentId && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Gateway Ref</span>
                 <span className="font-mono font-bold text-emerald-600">{confirmedPaymentDetails.paymentId}</span>
-              </div>
-            )}
-            {confirmedPaymentDetails.pickupStore && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Store Pickup</span>
-                <span className="font-bold text-gray-900 text-right text-[11px]">{confirmedPaymentDetails.pickupStore}</span>
               </div>
             )}
             <div className="flex justify-between pt-2 border-t border-gray-200">
@@ -497,8 +550,6 @@ export default function CheckoutPage() {
               discount_amount: discountAmount,
               payment_method: confirmedPaymentDetails.paymentMethod,
               payment_id: confirmedPaymentDetails.paymentId,
-              utr_number: confirmedPaymentDetails.utrNumber,
-              pickup_store: confirmedPaymentDetails.pickupStore,
               customer_name: formData.fullName,
               customer_email: formData.email,
               customer_phone: formData.phone,
@@ -543,23 +594,6 @@ export default function CheckoutPage() {
             <ArrowLeft className="w-3.5 h-3.5" /> Back to Store
           </Link>
 
-          {/* Stepper indicator */}
-          <div className="flex items-center gap-2 sm:gap-3 text-xs font-bold uppercase tracking-wider">
-            <span className="flex items-center gap-1.5 text-black">
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white bg-black">
-                1
-              </span>
-              <span>1. Delivery Details</span>
-            </span>
-            <span className="text-gray-300">──</span>
-            <span className="flex items-center gap-1.5 text-gray-400">
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white bg-gray-300">
-                2
-              </span>
-              <span>2. Payment Options</span>
-            </span>
-          </div>
-
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-full shadow-2xs self-start sm:self-auto">
             <Lock className="w-3.5 h-3.5 text-green-600" />
             <span>256-Bit SSL Encrypted Checkout</span>
@@ -568,8 +602,10 @@ export default function CheckoutPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* LEFT 7 COLUMNS: Delivery Address Form */}
+          {/* LEFT 7 COLUMNS: Delivery Address & Payment Method Form */}
           <div className="lg:col-span-7 space-y-6">
+            
+            {/* 1. Delivery Information */}
             <form onSubmit={handleProceedToPayment} className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs">
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
                 <div className="flex items-center gap-2">
@@ -660,20 +696,89 @@ export default function CheckoutPage() {
                   />
                 </div>
               </div>
-
-              <div className="mt-8 pt-6 border-t border-gray-100">
-                <button
-                  type="submit"
-                  className="w-full bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
-                >
-                  <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
-                  <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                </button>
-              </div>
             </form>
+
+            {/* 2. Payment Method Options */}
+            <div className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs space-y-4">
+              <div className="flex items-center gap-2 pb-4 border-b border-gray-100">
+                <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-black flex items-center justify-center">2</span>
+                <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Select Payment Method</h2>
+              </div>
+
+              <div className="space-y-3">
+                {/* Option 1: Pay Online (Razorpay) */}
+                <div
+                  onClick={() => setSelectedPaymentMethod('online')}
+                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start justify-between ${
+                    selectedPaymentMethod === 'online'
+                      ? 'border-red-600 bg-red-50/20 shadow-xs'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3.5">
+                    <input
+                      type="radio"
+                      name="payment_method_radio"
+                      checked={selectedPaymentMethod === 'online'}
+                      onChange={() => setSelectedPaymentMethod('online')}
+                      className="w-4.5 h-4.5 mt-0.5 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900">Pay Online</span>
+                        <span className="text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          Instant Confirmation
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        UPI (Google Pay, PhonePe, Paytm, QR Code), Debit &amp; Credit Cards, Netbanking, Wallets
+                      </p>
+                      <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400 font-medium">
+                        <span className="flex items-center gap-1 text-gray-600 font-semibold">
+                          <Lock className="w-3 h-3 text-emerald-600" /> Razorpay Secure Gateway
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <CreditCard className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                </div>
+
+                {/* Option 2: Cash on Delivery (COD) */}
+                <div
+                  onClick={() => setSelectedPaymentMethod('cod')}
+                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start justify-between ${
+                    selectedPaymentMethod === 'cod'
+                      ? 'border-red-600 bg-red-50/20 shadow-xs'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3.5">
+                    <input
+                      type="radio"
+                      name="payment_method_radio"
+                      checked={selectedPaymentMethod === 'cod'}
+                      onChange={() => setSelectedPaymentMethod('cod')}
+                      className="w-4.5 h-4.5 mt-0.5 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900">Cash on Delivery (COD)</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Pay with cash or UPI QR directly to the courier agent when your package arrives
+                      </p>
+                    </div>
+                  </div>
+
+                  <Banknote className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                </div>
+              </div>
+            </div>
+
           </div>
 
-          {/* RIGHT 5 COLUMNS: Order Summary */}
+          {/* RIGHT 5 COLUMNS: Order Summary & SINGLE Payment Action Button */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8">
             <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-2xs">
               
@@ -819,14 +924,30 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Action Button */}
+              {/* ONLY ONE PROCEED BUTTON ON THE ENTIRE PAGE */}
               <button
                 type="button"
-                onClick={() => handleProceedToPayment()}
-                className="w-full mt-6 bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
+                disabled={isSubmitting}
+                onClick={handleProceedToPayment}
+                className="w-full mt-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg cursor-pointer active:scale-[0.99]"
               >
-                <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
-                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Processing Order...
+                  </>
+                ) : selectedPaymentMethod === 'online' ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Pay with Razorpay • ₹{grandTotal.toLocaleString('en-IN')}</span>
+                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-4 h-4" />
+                    <span>Place Order (COD) • ₹{grandTotal.toLocaleString('en-IN')}</span>
+                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </>
+                )}
               </button>
 
               {/* Trust Features */}
@@ -846,24 +967,6 @@ export default function CheckoutPage() {
 
         </div>
       </div>
-
-      {/* Zepto-Style Payment Options Popup Modal */}
-      <PaymentOptionsModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        grandTotal={grandTotal}
-        subtotal={subtotal}
-        discountAmount={discountAmount}
-        shippingFee={shippingFee}
-        appliedCouponCode={appliedCoupon?.code}
-        orderId={activeOrderId}
-        customerName={formData.fullName}
-        customerPhone={formData.phone}
-        customerEmail={formData.email}
-        deliveryAddressSummary={`${formData.address}, ${formData.city} - ${formData.pincode}`}
-        isSubmitting={isSubmitting}
-        onPaymentComplete={finalizeOrder}
-      />
 
       {/* Available Coupons Modal */}
       {showCouponModal && (
