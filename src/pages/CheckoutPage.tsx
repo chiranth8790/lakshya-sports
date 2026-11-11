@@ -324,7 +324,11 @@ export default function CheckoutPage() {
       return;
     }
 
-    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TuZm0ssvj8dZ6j';
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+    if (!rzpKey) {
+      toastError('Payment gateway key is missing. Please configure VITE_RAZORPAY_KEY_ID or use Cash on Delivery.');
+      return;
+    }
 
     const options: any = {
       key: rzpKey,
