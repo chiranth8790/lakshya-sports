@@ -14,15 +14,10 @@ import {
   ChevronRight,
   Tag,
   X,
-  Printer,
-  MapPin,
-  Edit2,
-  Loader2,
-  Store
+  Printer
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
-import CustomPaymentPortal, { type PaymentMethodType } from '../components/checkout/CustomPaymentPortal';
-
+import PaymentOptionsModal from '../components/checkout/PaymentOptionsModal';
 
 function ProductThumbnail({ src, alt }: { src?: string; alt: string }) {
   const [imgError, setImgError] = useState(!src);
@@ -70,18 +65,6 @@ export default function CheckoutPage() {
   const { user, profile } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
 
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, []);
-
   // 1. Resolve Checkout Source: Buy Now single-item state takes priority over persistent cart
   const directItem: OrderItem | undefined = location.state?.directCheckoutItem;
   const isDirectCheckout = Boolean(directItem);
@@ -110,11 +93,9 @@ export default function CheckoutPage() {
     }
   }, [user, profile]);
 
-  // Checkout Multi-Step: Step 1 = Shipping, Step 2 = Custom Payment
-  const [checkoutStep, setCheckoutStep] = useState<'shipping' | 'payment'>('shipping');
+  // Payment Options Popup State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [activeOrderId] = useState(() => `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodType>('razorpay');
-  const [pickupStore, setPickupStore] = useState('Chikkalasandra Flagship Store (South Bengaluru)');
   const [confirmedPaymentDetails, setConfirmedPaymentDetails] = useState<{
     paymentMethod: string;
     paymentId?: string;
@@ -164,10 +145,7 @@ export default function CheckoutPage() {
     };
 
     async function loadCoupons() {
-      // 1. Load immediately from local storage
       syncCoupons();
-
-      // 2. Load from Supabase and merge
       try {
         const { data, error } = await supabase
           .from('coupons')
@@ -231,7 +209,6 @@ export default function CheckoutPage() {
     } else {
       discountAmount = appliedCoupon.value;
     }
-    // Cap discount to subtotal
     if (discountAmount > subtotal) discountAmount = subtotal;
   }
 
@@ -257,7 +234,6 @@ export default function CheckoutPage() {
       return;
     }
     
-    // Also read directly from localStorage in case it was created just now in Admin tab
     let pool = availableCoupons;
     try {
       const stored = localStorage.getItem('lakshya_coupons');
@@ -328,69 +304,10 @@ export default function CheckoutPage() {
     return true;
   };
 
-  
-  const handleTriggerPayment = () => {
-    if (selectedPaymentMethod === 'razorpay') {
-      if (typeof (window as any).Razorpay === 'undefined') {
-        toastError('Razorpay is loading or blocked by an adblocker. You can choose Cash on Delivery.');
-        return;
-      }
-      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
-      const options = {
-        key: rzpKey,
-        amount: Math.round(grandTotal * 100),
-        currency: 'INR',
-        name: 'Lakshya Sports',
-        description: `Order ${activeOrderId}`,
-        image: '/website-logo.png',
-        prefill: {
-          name: formData.fullName,
-          email: formData.email,
-          contact: formData.phone
-        },
-        theme: {
-          color: '#dc2626'
-        },
-        handler: async function (response: any) {
-          await finalizeOrder({
-            paymentMethod: 'card',
-            paymentId: response.razorpay_payment_id,
-            status: 'Paid'
-          });
-        }
-      };
-      try {
-        const rzp = new (window as any).Razorpay(options);
-        rzp.on('payment.failed', function (resp: any) {
-          toastError(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
-        });
-        rzp.open();
-      } catch (e: any) {
-        toastError('Unable to open payment modal. Please try Cash on Delivery.');
-      }
-    } else if (selectedPaymentMethod === 'cod') {
-      finalizeOrder({
-        paymentMethod: 'cod',
-        status: 'Processing'
-      });
-    } else if (selectedPaymentMethod === 'store_pickup') {
-      finalizeOrder({
-        paymentMethod: 'pay_at_store',
-        pickupStore: pickupStore,
-        status: 'Processing'
-      });
-    } else if (selectedPaymentMethod === 'upi_direct') {
-      const elem = document.querySelector('input[placeholder*="430129847120"]');
-      if (elem) (elem as HTMLElement).focus();
-      toastError('Please enter your 12-digit UPI reference number to confirm direct payment.');
-    }
-  };
-
   const handleProceedToPayment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!validateShippingForm()) return;
-    setCheckoutStep('payment');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setShowPaymentModal(true);
   };
 
   // Finalize order in Supabase with payment metadata
@@ -445,7 +362,6 @@ export default function CheckoutPage() {
           p_order_items: checkoutItems
         });
         if (rpcErr) {
-          // Graceful client-side fallback if RPC is not yet executed in Supabase SQL editor
           for (const item of checkoutItems) {
             if (item.id) {
               const { data: prod } = await supabase.from('products').select('stock, variants').eq('id', item.id).single();
@@ -484,6 +400,7 @@ export default function CheckoutPage() {
 
       setConfirmedPaymentDetails(details);
       setPlacedOrderId(activeOrderId);
+      setShowPaymentModal(false);
       setOrderComplete(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
@@ -608,9 +525,9 @@ export default function CheckoutPage() {
         <p className="text-xs text-gray-500 mb-6">Select a product before proceeding to checkout.</p>
         <Link
           to="/"
-          className="bg-black text-white px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-neutral-800 transition"
+          className="bg-black hover:bg-neutral-800 text-white font-bold px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition"
         >
-          Return to Store
+          Return to Shop
         </Link>
       </div>
     );
@@ -619,6 +536,7 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
+        
         {/* Navigation & Trust Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-8 border-b border-gray-200 gap-4">
           <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-black uppercase tracking-wider transition">
@@ -627,18 +545,18 @@ export default function CheckoutPage() {
 
           {/* Stepper indicator */}
           <div className="flex items-center gap-2 sm:gap-3 text-xs font-bold uppercase tracking-wider">
-            <span className={`flex items-center gap-1.5 ${checkoutStep === 'shipping' ? 'text-black' : 'text-emerald-600'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white ${checkoutStep === 'shipping' ? 'bg-black' : 'bg-emerald-600'}`}>
-                {checkoutStep === 'payment' ? '✓' : '1'}
+            <span className="flex items-center gap-1.5 text-black">
+              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white bg-black">
+                1
               </span>
-              <span>1. Delivery</span>
+              <span>1. Delivery Details</span>
             </span>
             <span className="text-gray-300">──</span>
-            <span className={`flex items-center gap-1.5 ${checkoutStep === 'payment' ? 'text-black' : 'text-gray-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white ${checkoutStep === 'payment' ? 'bg-black' : 'bg-gray-300'}`}>
+            <span className="flex items-center gap-1.5 text-gray-400">
+              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white bg-gray-300">
                 2
               </span>
-              <span>2. Payment</span>
+              <span>2. Payment Options</span>
             </span>
           </div>
 
@@ -650,161 +568,109 @@ export default function CheckoutPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* LEFT 7 COLUMNS: Shipping Details OR Custom Payment Portal */}
+          {/* LEFT 7 COLUMNS: Delivery Address Form */}
           <div className="lg:col-span-7 space-y-6">
-            
-            {checkoutStep === 'shipping' ? (
-              /* Step 1: Delivery Address Form */
-              <form onSubmit={handleProceedToPayment} className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs">
-                <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-black flex items-center justify-center">1</span>
-                    <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Delivery Information</h2>
-                  </div>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">All Fields Required</span>
+            <form onSubmit={handleProceedToPayment} className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-black flex items-center justify-center">1</span>
+                  <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Delivery Information</h2>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Full Name *</label>
-                    <input
-                      type="text"
-                      name="fullName"
-                      required
-                      value={formData.fullName}
-                      onChange={handleInputChange}
-                      placeholder="e.g. Rahul Sharma"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Email Address *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="rahul@example.com"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Phone Number *</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      required
-                      pattern="[0-9]{10}"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="10-digit mobile number"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Street Address / House No. *</label>
-                    <input
-                      type="text"
-                      name="address"
-                      required
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      placeholder="Flat No, Building, Street, Landmark"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">City *</label>
-                    <input
-                      type="text"
-                      name="city"
-                      required
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      placeholder="Bengaluru"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">PIN Code *</label>
-                    <input
-                      type="text"
-                      name="pincode"
-                      required
-                      pattern="[0-9]{6}"
-                      value={formData.pincode}
-                      onChange={handleInputChange}
-                      placeholder="560062"
-                      className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-gray-100">
-                  <button
-                    type="submit"
-                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
-                  >
-                    <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
-                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* Step 2: Custom Payment View */
-              <div className="space-y-4">
-                {/* Delivery Address Summary Bar */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-2xs flex items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center shrink-0 mt-0.5">
-                      <MapPin className="w-4 h-4 text-neutral-800" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block">Deliver To</span>
-                      <p className="text-xs font-bold text-gray-900 mt-0.5">
-                        {formData.fullName} • <span className="font-mono text-gray-600">{formData.phone}</span>
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                        {formData.address}, {formData.city} - {formData.pincode}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCheckoutStep('shipping');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl transition cursor-pointer shrink-0"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span>Change</span>
-                  </button>
-                </div>
-
-                {/* In-Page Custom Payment Portal (Hybrid UPI + Card + COD) */}
-                <CustomPaymentPortal
-                  grandTotal={grandTotal}
-                  orderId={activeOrderId}
-                  customerName={formData.fullName}
-                  customerPhone={formData.phone}
-                  customerEmail={formData.email}
-                  isSubmitting={isSubmitting}
-                  selectedMethod={selectedPaymentMethod}
-                  onMethodChange={setSelectedPaymentMethod}
-                  onPaymentComplete={finalizeOrder}
-                  pickupStore={pickupStore}
-                  onPickupStoreChange={setPickupStore}
-                />
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">All Fields Required</span>
               </div>
-            )}
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Full Name *</label>
+                  <input
+                    type="text"
+                    name="fullName"
+                    required
+                    value={formData.fullName}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Rahul Sharma"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Email Address *</label>
+                  <input
+                    type="email"
+                    name="email"
+                    required
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="rahul@example.com"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Phone Number *</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    required
+                    pattern="[0-9]{10}"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    placeholder="10-digit mobile number"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Street Address / House No. *</label>
+                  <input
+                    type="text"
+                    name="address"
+                    required
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    placeholder="Flat No, Building, Street, Landmark"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">City *</label>
+                  <input
+                    type="text"
+                    name="city"
+                    required
+                    value={formData.city}
+                    onChange={handleInputChange}
+                    placeholder="Bengaluru"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">PIN Code *</label>
+                  <input
+                    type="text"
+                    name="pincode"
+                    required
+                    pattern="[0-9]{6}"
+                    value={formData.pincode}
+                    onChange={handleInputChange}
+                    placeholder="560062"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 text-sm focus:outline-hidden focus:border-black transition"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                <button
+                  type="submit"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
+                >
+                  <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
+                  <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* RIGHT 5 COLUMNS: Order Summary */}
@@ -852,7 +718,7 @@ export default function CheckoutPage() {
               <div className="pt-4 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-xs font-black text-gray-900 uppercase flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-red-600" /> Coupons & Offers
+                    <Tag className="w-3.5 h-3.5 text-red-600" /> Coupons &amp; Offers
                   </h4>
                   {availableCoupons.length > 0 && !appliedCoupon && (
                     <button
@@ -953,59 +819,15 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Action Buttons based on checkout step */}
-              {checkoutStep === 'shipping' ? (
-                <button
-                  type="button"
-                  onClick={() => handleProceedToPayment()}
-                  className="w-full mt-6 bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
-                >
-                  <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
-                  <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                </button>
-              ) : (
-                <div className="mt-6 space-y-3">
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleTriggerPayment}
-                    className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg cursor-pointer active:scale-[0.99]"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Processing Order...
-                      </>
-                    ) : selectedPaymentMethod === 'razorpay' ? (
-                      <>
-                        <Lock className="w-4 h-4" /> Pay ?{grandTotal.toLocaleString('en-IN')} with Razorpay
-                      </>
-                    ) : selectedPaymentMethod === 'cod' ? (
-                      <>
-                        <Truck className="w-4 h-4" /> Place Order ? COD (?{grandTotal.toLocaleString('en-IN')})
-                      </>
-                    ) : selectedPaymentMethod === 'store_pickup' ? (
-                      <>
-                        <Store className="w-4 h-4" /> Reserve for Store Pickup
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" /> Confirm Direct UPI (?{grandTotal.toLocaleString('en-IN')})
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCheckoutStep('shipping');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold h-10 rounded-xl uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Edit Delivery Address
-                  </button>
-                </div>
-              )}
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => handleProceedToPayment()}
+                className="w-full mt-6 bg-red-600 hover:bg-red-700 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-[0.99]"
+              >
+                <span>Proceed to Payment • ₹{grandTotal.toLocaleString('en-IN')}</span>
+                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
 
               {/* Trust Features */}
               <div className="mt-5 pt-5 border-t border-gray-100 grid grid-cols-2 gap-3 text-[10px] text-gray-500 font-medium">
@@ -1025,9 +847,27 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Coupon Modal */}
+      {/* Zepto-Style Payment Options Popup Modal */}
+      <PaymentOptionsModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        grandTotal={grandTotal}
+        subtotal={subtotal}
+        discountAmount={discountAmount}
+        shippingFee={shippingFee}
+        appliedCouponCode={appliedCoupon?.code}
+        orderId={activeOrderId}
+        customerName={formData.fullName}
+        customerPhone={formData.phone}
+        customerEmail={formData.email}
+        deliveryAddressSummary={`${formData.address}, ${formData.city} - ${formData.pincode}`}
+        isSubmitting={isSubmitting}
+        onPaymentComplete={finalizeOrder}
+      />
+
+      {/* Available Coupons Modal */}
       {showCouponModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
