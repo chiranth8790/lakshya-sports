@@ -17,7 +17,8 @@ import {
   Printer,
   Loader2,
   CreditCard,
-  Banknote
+  Banknote,
+  MapPin
 } from 'lucide-react';
 import OrderReceiptModal from '../components/OrderReceiptModal';
 
@@ -602,15 +603,18 @@ export default function CheckoutPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* LEFT 7 COLUMNS: Delivery Address & Payment Method Form */}
-          <div className="lg:col-span-7 space-y-6">
-            
-            {/* 1. Delivery Information */}
+          {/* LEFT 7 COLUMNS: Delivery Address Information ONLY */}
+          <div className="lg:col-span-7">
             <form onSubmit={handleProceedToPayment} className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs">
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-black flex items-center justify-center">1</span>
-                  <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Delivery Information</h2>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center">
+                    <MapPin className="w-4 h-4 text-black" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Delivery Information</h2>
+                    <p className="text-[11px] text-gray-400 font-medium">Enter your shipping destination details</p>
+                  </div>
                 </div>
                 <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">All Fields Required</span>
               </div>
@@ -697,92 +701,13 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </form>
-
-            {/* 2. Payment Method Options */}
-            <div className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-2xs space-y-4">
-              <div className="flex items-center gap-2 pb-4 border-b border-gray-100">
-                <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-black flex items-center justify-center">2</span>
-                <h2 className="text-sm font-black text-gray-900 uppercase tracking-wide">Select Payment Method</h2>
-              </div>
-
-              <div className="space-y-3">
-                {/* Option 1: Pay Online (Razorpay) */}
-                <div
-                  onClick={() => setSelectedPaymentMethod('online')}
-                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start justify-between ${
-                    selectedPaymentMethod === 'online'
-                      ? 'border-red-600 bg-red-50/20 shadow-xs'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <input
-                      type="radio"
-                      name="payment_method_radio"
-                      checked={selectedPaymentMethod === 'online'}
-                      onChange={() => setSelectedPaymentMethod('online')}
-                      className="w-4.5 h-4.5 mt-0.5 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer"
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-900">Pay Online</span>
-                        <span className="text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                          Instant Confirmation
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        UPI (Google Pay, PhonePe, Paytm, QR Code), Debit &amp; Credit Cards, Netbanking, Wallets
-                      </p>
-                      <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400 font-medium">
-                        <span className="flex items-center gap-1 text-gray-600 font-semibold">
-                          <Lock className="w-3 h-3 text-emerald-600" /> Razorpay Secure Gateway
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <CreditCard className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                </div>
-
-                {/* Option 2: Cash on Delivery (COD) */}
-                <div
-                  onClick={() => setSelectedPaymentMethod('cod')}
-                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start justify-between ${
-                    selectedPaymentMethod === 'cod'
-                      ? 'border-red-600 bg-red-50/20 shadow-xs'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <input
-                      type="radio"
-                      name="payment_method_radio"
-                      checked={selectedPaymentMethod === 'cod'}
-                      onChange={() => setSelectedPaymentMethod('cod')}
-                      className="w-4.5 h-4.5 mt-0.5 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer"
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-900">Cash on Delivery (COD)</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Pay with cash or UPI QR directly to the courier agent when your package arrives
-                      </p>
-                    </div>
-                  </div>
-
-                  <Banknote className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                </div>
-              </div>
-            </div>
-
           </div>
 
-          {/* RIGHT 5 COLUMNS: Order Summary & SINGLE Payment Action Button */}
+          {/* RIGHT 5 COLUMNS: Order Summary & Payment Selection & Action Button */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-8">
-            <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-2xs">
+            <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-2xs space-y-5">
               
-              <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
+              <div className="flex items-center justify-between pb-4 border-b border-gray-100">
                 <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
                   Order Summary ({checkoutItems.length} {checkoutItems.length === 1 ? 'item' : 'items'})
                 </h3>
@@ -794,7 +719,7 @@ export default function CheckoutPage() {
               </div>
 
               {/* Items List */}
-              <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto pr-1">
+              <div className="divide-y divide-gray-100 max-h-56 overflow-y-auto pr-1">
                 {checkoutItems.map((item, index) => (
                   <div key={index} className="py-3 flex items-center gap-3">
                     <ProductThumbnail
@@ -924,12 +849,80 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
+              {/* PAYMENT OPTION (IN ORDER SUMMARY ONLY) */}
+              <div className="pt-4 border-t border-gray-100 space-y-2.5">
+                <span className="text-xs font-black text-gray-900 uppercase tracking-wider block">
+                  Select Payment Option
+                </span>
+
+                <div className="space-y-2">
+                  {/* Pay Online */}
+                  <label
+                    onClick={() => setSelectedPaymentMethod('online')}
+                    className={`p-3 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
+                      selectedPaymentMethod === 'online'
+                        ? 'border-red-600 bg-red-50/20 shadow-xs'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="radio"
+                        name="order_summary_payment_method"
+                        checked={selectedPaymentMethod === 'online'}
+                        onChange={() => setSelectedPaymentMethod('online')}
+                        className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-gray-900">Pay Online</span>
+                          <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">
+                            Instant
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 truncate mt-0.5">
+                          UPI, QR Code, Cards, Netbanking
+                        </p>
+                      </div>
+                    </div>
+                    <CreditCard className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                  </label>
+
+                  {/* Cash on Delivery */}
+                  <label
+                    onClick={() => setSelectedPaymentMethod('cod')}
+                    className={`p-3 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
+                      selectedPaymentMethod === 'cod'
+                        ? 'border-red-600 bg-red-50/20 shadow-xs'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="radio"
+                        name="order_summary_payment_method"
+                        checked={selectedPaymentMethod === 'cod'}
+                        onChange={() => setSelectedPaymentMethod('cod')}
+                        className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-gray-900 block">Cash on Delivery (COD)</span>
+                        <p className="text-[10px] text-gray-500 truncate mt-0.5">
+                          Pay cash or UPI on delivery
+                        </p>
+                      </div>
+                    </div>
+                    <Banknote className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                  </label>
+                </div>
+              </div>
+
               {/* ONLY ONE PROCEED BUTTON ON THE ENTIRE PAGE */}
               <button
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleProceedToPayment}
-                className="w-full mt-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg cursor-pointer active:scale-[0.99]"
+                className="w-full mt-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black h-13 rounded-2xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg cursor-pointer active:scale-[0.99]"
               >
                 {isSubmitting ? (
                   <>
@@ -951,7 +944,7 @@ export default function CheckoutPage() {
               </button>
 
               {/* Trust Features */}
-              <div className="mt-5 pt-5 border-t border-gray-100 grid grid-cols-2 gap-3 text-[10px] text-gray-500 font-medium">
+              <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 text-[10px] text-gray-500 font-medium">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-green-600 shrink-0" />
                   <span>100% Genuine Gear</span>
