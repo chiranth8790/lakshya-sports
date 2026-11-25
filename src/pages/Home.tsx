@@ -9,6 +9,10 @@ import { fetchWithCache } from '../utils/productCache';
 
 const HOME_FAQS = [
   {
+    question: "Is lakshyashop.in the official online store for Lakshya Sports Bengaluru?",
+    answer: "Yes! lakshyashop.in is the official verified e-commerce website for Lakshya Sports. Customers across Bangalore and India can purchase 100% authentic Yonex, Li-Ning, Victor, and SS sports gear online with 2-hour instant delivery across Bengaluru via Shiprocket Quick, as well as express nationwide shipping."
+  },
+  {
     question: "Where can I buy 100% original Yonex and Li-Ning badminton rackets in Bangalore?",
     answer: "You can purchase 100% authentic Yonex, Li-Ning, and Victor badminton rackets online at Lakshya Sports (lakshyashop.in) or walk in directly to our Bengaluru pro shops located at Chikkalasandra (South BLR) and JP Nagar 7th Phase. All rackets feature official brand holograms, genuine scratch codes, and full manufacturer warranty."
   },
@@ -246,12 +250,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-100 pb-16">
       <SEO
-        title="Lakshya Sports | #1 Badminton & Cricket Store in Bangalore | Pro Stringing"
-        description="Shop 100% authentic Yonex, Li-Ning badminton rackets, tournament shuttles, English willow cricket bats, and precision electronic stringing in Bangalore. Stores at Chikkalasandra & JP Nagar 7th Phase."
-        keywords="badminton goods, badminton racquets, badminton rackets bangalore, buy badminton racket online, yonex badminton shop bangalore, badminton stringing near me, cricket bats bangalore, lakshya sports"
+        title="Lakshya Sports | Official Online Sports Store Bengaluru – Badminton & Cricket"
+        description="Lakshya Sports Bengaluru (lakshyashop.in) – Official pro sports store. 100% authentic Yonex, Li-Ning badminton racquets, English willow cricket bats, shoes, precision electronic stringing & 2-hr express delivery in Bangalore."
+        keywords="lakshya sports, lakshya sports bangalore, lakshya sports chikkalasandra, lakshya sports jp nagar, lakshya shop, badminton rackets bangalore, buy badminton racket online, yonex badminton shop bangalore, cricket bats bangalore, pro racket stringing bangalore"
         canonical="https://lakshyashop.in/"
         jsonLd={homeJsonLd}
       />
+
+      {/* Semantic H1 for Google Search Authority & Brand Identity */}
+      <h1 className="sr-only">
+        Lakshya Sports – Official Online Sports Store Bengaluru | Pro Badminton, Cricket &amp; Multi-Sport Equipment
+      </h1>
+
       {/* Sliding Hero Window */}
       <section 
         className="relative overflow-hidden bg-black text-white w-full touch-pan-y min-h-[300px] sm:min-h-[420px]"
@@ -278,7 +288,7 @@ export default function Home() {
                     <Link to={slide.ctaLink} className="w-full block relative group bg-black">
                       <img
                         src={slide.imageUrl}
-                        alt={slide.title || 'Promotional Banner'}
+                        alt={`${slide.title || 'Lakshya Sports'} – Lakshya Sports Bengaluru`}
                         className="w-full h-auto max-h-[550px] object-contain sm:object-cover sm:max-h-[500px] mx-auto group-hover:scale-[1.005] transition-transform duration-300"
                         loading={index === 0 ? "eager" : "lazy"}
                         fetchPriority={index === 0 ? "high" : "auto"}
@@ -292,9 +302,10 @@ export default function Home() {
                           {slide.tag}
                         </span>
                       )}
-                      <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight max-w-3xl leading-none drop-shadow-sm">
+                      <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight max-w-3xl leading-none drop-shadow-sm">
+                        <span className="text-red-500 block text-xs sm:text-sm tracking-widest font-black mb-1">Lakshya Sports</span>
                         {slide.title}
-                      </h1>
+                      </h2>
                       {slide.subtitle && (
                         <p className="mt-4 text-xs sm:text-sm text-gray-200 max-w-xl font-medium">
                           {slide.subtitle}

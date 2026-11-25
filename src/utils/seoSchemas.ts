@@ -27,6 +27,9 @@ export function getStoreLocalBusinessSchema() {
       "priceRange": "₹₹",
       "currenciesAccepted": "INR",
       "paymentAccepted": "Cash, Credit Card, Debit Card, UPI",
+      "sameAs": [
+        "https://maps.google.com/?q=Lakshya+Sports+Chikkalasandra+Bangalore"
+      ],
       "address": {
         "@type": "PostalAddress",
         "streetAddress": "No. 72/4, Chikkalasandra Main Road, Sarvabhouma Nagar, Chikkalasandra, Near Shanishwara Temple",
@@ -76,12 +79,16 @@ export function getStoreLocalBusinessSchema() {
       "@type": "SportingGoodsStore",
       "@id": "https://lakshyashop.in/#pro-shop-jpnagar",
       "name": "Lakshya Sports – Pro Store JP Nagar 7th Phase",
+      "alternateName": "Lakshya Sports JP Nagar",
       "image": "https://lakshyashop.in/website-logo.png",
       "url": "https://lakshyashop.in",
       "telephone": "+919740517527",
       "priceRange": "₹₹",
       "currenciesAccepted": "INR",
       "paymentAccepted": "Cash, Credit Card, Debit Card, UPI",
+      "sameAs": [
+        "https://maps.google.com/?q=Lakshya+Sports+JP+Nagar+7th+Phase+Bangalore"
+      ],
       "address": {
         "@type": "PostalAddress",
         "streetAddress": "12th Main Road, Jagruthi Colony, Puttenahalli, JP Nagar 7th Phase",
@@ -107,13 +114,22 @@ export function getStoreLocalBusinessSchema() {
   ];
 }
 
-// 2. Sitelinks Search Box WebSite Schema
+// 2. Sitelinks Search Box & Official Google Site Name Schema
 export function getWebSiteSearchSchema() {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": "https://lakshyashop.in/#website",
     "name": "Lakshya Sports",
-    "url": "https://lakshyashop.in",
+    "alternateName": [
+      "Lakshya Sports Bengaluru",
+      "Lakshya Sports Bangalore",
+      "Lakshya Sports Store",
+      "Lakshya Sports Online",
+      "Lakshya Shop",
+      "lakshyashop.in"
+    ],
+    "url": "https://lakshyashop.in/",
     "potentialAction": {
       "@type": "SearchAction",
       "target": {

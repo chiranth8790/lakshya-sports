@@ -290,10 +290,10 @@ export default function RetailHeader() {
 
 {/* Center: Brand Image Logo */}
 <div className="flex items-center justify-center">
-  <Link to="/" className="flex items-center justify-center py-1">
+  <Link to="/" title="Lakshya Sports – Official Online Sports Store Bengaluru" className="flex items-center justify-center py-1">
     <img
       src="/website-logo.png"
-      alt="Lakshya Sports"
+      alt="Lakshya Sports Bengaluru"
       className="h-12 sm:h-16 w-auto object-contain transition-transform hover:scale-105 drop-shadow-xs"
     />
   </Link>
