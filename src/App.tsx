@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { createBrowserRouter, RouterProvider, Outlet, ScrollRestoration } from 'react-router-dom';
 
 // Providers & Global Components
@@ -11,6 +11,7 @@ import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 import AIAssistant from './components/ai-assistant/AIAssistant';
+import ComingSoonPage from './pages/ComingSoonPage';
 
 // Code-Splitting: Lazy load pages to maximize page load speed and scalability
 const Home = lazy(() => import('./pages/Home'));
@@ -42,11 +43,42 @@ function PageLoadingFallback() {
   );
 }
 
+// Global toggle: Set to false when ready to launch the full online store to the public
+const IS_COMING_SOON_MODE = true;
+
 // Main Layout wrapping Header, Main Outlet, and Footer
 function RootLayout() {
+  const [isPreview, setIsPreview] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') === 'true' || params.get('preview') === 'lakshya') {
+      localStorage.setItem('lakshya_preview_mode', 'true');
+      return true;
+    }
+    return localStorage.getItem('lakshya_preview_mode') === 'true';
+  });
+
+  if (IS_COMING_SOON_MODE && !isPreview) {
+    return <ComingSoonPage onEnterStore={() => setIsPreview(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
       <ScrollRestoration />
+      {IS_COMING_SOON_MODE && isPreview && (
+        <div className="bg-red-600 text-white text-[11px] font-black uppercase tracking-wider py-1.5 px-4 flex items-center justify-between sticky top-0 z-50 shadow-md">
+          <span>⚡ Staff Preview Active (Visitors currently see the Coming Soon launch page)</span>
+          <button
+            onClick={() => {
+              localStorage.removeItem('lakshya_preview_mode');
+              setIsPreview(false);
+            }}
+            className="bg-black text-white px-2.5 py-0.5 rounded text-[10px] hover:bg-neutral-800 transition font-bold uppercase cursor-pointer"
+          >
+            Show Coming Soon
+          </button>
+        </div>
+      )}
       <RetailHeader />
       <main className="flex-1">
         <Suspense fallback={<PageLoadingFallback />}>
